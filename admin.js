@@ -1,12 +1,17 @@
 // Admin panel functionality module
 import { state, saveState } from './state.js';
 import { renderCalendar, renderBlockedCalendar } from './calendar.js';
+import { renderRegisteredPatientsList } from './modals.js';
+import { applyAppearanceConfig, DEFAULT_LOGO_SRC, DEFAULT_BACKGROUND_SRC } from './appearance.js';
+
+let visualConfigDraft = null;
 
 export function initializeAdminPanel() {
     const monthSelect = document.getElementById('monthSelect');
     const yearSelect = document.getElementById('yearSelect');
     const startDayInput = document.getElementById('startDayInput');
     const endDayInput = document.getElementById('endDayInput');
+    const monthlyBookingLimitInput = document.getElementById('monthlyBookingLimitInput');
     const currentYear = new Date().getFullYear();
 
     const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
@@ -41,6 +46,10 @@ export function initializeAdminPanel() {
     document.getElementById('customizeDayBtn').addEventListener('click', showCustomizeDayModal);
     document.getElementById('generatePdfBtn').addEventListener('click', generateMonthPDF);
     document.getElementById('enablePasswordBtn').addEventListener('click', showSetPasswordModal);
+    document.getElementById('patientRegistrationBtn').addEventListener('click', showPatientRegistrationModal);
+    document.getElementById('emailConfigBtn').addEventListener('click', showEmailConfigModal);
+    document.getElementById('visualConfigBtn').addEventListener('click', showVisualConfigModal);
+    initializeVisualConfigModal();
 
     const handleMonthYearChange = () => {
         const month = parseInt(monthSelect.value);
@@ -59,6 +68,11 @@ export function initializeAdminPanel() {
             const end = existingConfig.endDay || daysInMonth;
             startDayInput.value = start;
             endDayInput.value = end;
+            if (monthlyBookingLimitInput) {
+                monthlyBookingLimitInput.value = Number.isFinite(parseInt(existingConfig.monthlyBookingLimit, 10))
+                    ? parseInt(existingConfig.monthlyBookingLimit, 10)
+                    : 0;
+            }
             // marcar os dias da semana que já possuem configuração
             const daysCheckboxes = document.querySelectorAll('.days-selector input[type="checkbox"]');
             daysCheckboxes.forEach(cb => {
@@ -68,6 +82,7 @@ export function initializeAdminPanel() {
         } else {
             startDayInput.value = 1;
             endDayInput.value = daysInMonth;
+            if (monthlyBookingLimitInput) monthlyBookingLimitInput.value = 0;
             // por padrão, todos os dias da semana marcados
             const daysCheckboxes = document.querySelectorAll('.days-selector input[type="checkbox"]');
             daysCheckboxes.forEach(cb => cb.checked = true);
@@ -122,6 +137,7 @@ function saveConfiguration() {
     const yearSelect = document.getElementById('yearSelect');
     const startDayInput = document.getElementById('startDayInput');
     const endDayInput = document.getElementById('endDayInput');
+    const monthlyBookingLimitInput = document.getElementById('monthlyBookingLimitInput');
     const month = parseInt(monthSelect.value);
     const year = parseInt(yearSelect.value);
 
@@ -133,6 +149,10 @@ function saveConfiguration() {
     if (endDay < 1) endDay = 1;
     if (endDay > daysInMonth) endDay = daysInMonth;
     if (endDay < startDay) endDay = startDay;
+
+    let monthlyBookingLimit = parseInt(monthlyBookingLimitInput?.value || '0', 10);
+    if (!Number.isFinite(monthlyBookingLimit) || monthlyBookingLimit < 0) monthlyBookingLimit = 0;
+    if (monthlyBookingLimit > 99) monthlyBookingLimit = 99;
 
     const daysCheckboxes = document.querySelectorAll('.days-selector input[type="checkbox"]');
     const availableDays = Array.from(daysCheckboxes)
@@ -148,7 +168,7 @@ function saveConfiguration() {
     })).filter(p => p.name && p.start && p.end);
 
     if (availableDays.length === 0) {
-        alert('Selecione pelo menos um dia da semana');
+        window.showFmuNotice('Selecione pelo menos um dia da semana', 'Atenção');
         return;
     }
 
@@ -156,9 +176,10 @@ function saveConfiguration() {
     const existingConfig = state.configurations[key] || {};
     const daysConfig = existingConfig.daysConfig || {};
 
-    // atualiza intervalo de dias ativos
+    // atualiza intervalo de dias ativos e limite mensal do paciente
     existingConfig.startDay = startDay;
     existingConfig.endDay = endDay;
+    existingConfig.monthlyBookingLimit = monthlyBookingLimit;
 
     // para cada dia da semana marcado, grava/atualiza a configuração daquele dia
     availableDays.forEach(dow => {
@@ -171,13 +192,14 @@ function saveConfiguration() {
     state.configurations[key] = existingConfig;
 
     saveState();
-    alert('Configuração salva com sucesso!');
+    window.showFmuNotice('Configuração salva com sucesso!', 'Sucesso');
 }
 
-function resetMonth() {
-    const password = prompt('Digite a senha de administrador para resetar o mês:');
+async function resetMonth() {
+    const password = await window.showFmuPasswordPrompt('Digite a senha de administrador para resetar o mês:', 'Resetar mês');
+    if (password === null) return;
     if (password !== 'daqta') {
-        alert('Senha incorreta!');
+        window.showFmuNotice('Senha incorreta!', 'Acesso negado');
         return;
     }
     
@@ -191,7 +213,8 @@ function resetMonth() {
     
     const confirmMsg = `Tem certeza que deseja RESETAR todos os dados de ${months[month]} ${year}?\\n\\nIsto irá apagar:\\n- Configurações do mês\\n- Todos os agendamentos\\n- Dias bloqueados\\n- Configurações personalizadas de dias\\n\\nEsta ação não pode ser desfeita!`;
     
-    if (!confirm(confirmMsg)) {
+    const confirmed = await window.showFmuConfirm(confirmMsg, 'Confirmar reset do mês', 'Resetar', 'Cancelar');
+    if (!confirmed) {
         return;
     }
     
@@ -224,7 +247,7 @@ function resetMonth() {
     
     saveState();
     renderCalendar();
-    alert(`Mês ${months[month]} ${year} foi resetado com sucesso!`);
+    window.showFmuNotice(`Mês ${months[month]} ${year} foi resetado com sucesso!`, 'Sucesso');
 }
 
 function showBlockedDaysModal() {
@@ -344,12 +367,21 @@ function openCustomizeDayForm(day, dateKey) {
         const periodItem = document.createElement('div');
         periodItem.className = 'period-item';
         periodItem.innerHTML = `
-            <input type="text" placeholder="Nome do período" value="${period.name}" class="period-name">
+            <select class="period-name">
+                <option value="Manhã">Manhã</option>
+                <option value="Tarde">Tarde</option>
+                <option value="Noite">Noite</option>
+            </select>
             <input type="time" value="${period.start}" class="period-start">
             <input type="time" value="${period.end}" class="period-end">
             <input type="number" placeholder="Vagas" value="${period.slots || 1}" min="1" class="period-slots">
             <button class="remove-period" ${periodsToShow.length === 1 ? 'disabled' : ''}>×</button>
         `;
+
+        const select = periodItem.querySelector('.period-name');
+        if (select && ['Manhã', 'Tarde', 'Noite'].includes(period.name)) {
+            select.value = period.name;
+        }
 
         const removeBtn = periodItem.querySelector('.remove-period');
         removeBtn.addEventListener('click', () => {
@@ -368,7 +400,11 @@ function openCustomizeDayForm(day, dateKey) {
         const periodItem = document.createElement('div');
         periodItem.className = 'period-item';
         periodItem.innerHTML = `
-            <input type="text" placeholder="Nome do período" class="period-name">
+            <select class="period-name">
+                <option value="Manhã">Manhã</option>
+                <option value="Tarde">Tarde</option>
+                <option value="Noite">Noite</option>
+            </select>
             <input type="time" class="period-start">
             <input type="time" class="period-end">
             <input type="number" placeholder="Vagas" min="1" value="5" class="period-slots">
@@ -391,8 +427,8 @@ function openCustomizeDayForm(day, dateKey) {
         renderCustomizeCalendar();
     };
 
-    document.getElementById('removeCustomDayBtn').onclick = () => {
-        if (confirm('Deseja remover a configuração personalizada deste dia?')) {
+    document.getElementById('removeCustomDayBtn').onclick = async () => {
+        if (await window.showFmuConfirm('Deseja remover a configuração personalizada deste dia?', 'Remover personalização', 'Remover', 'Cancelar')) {
             if (state.customDayConfigurations && state.customDayConfigurations[dateKey]) {
                 delete state.customDayConfigurations[dateKey];
                 saveState();
@@ -437,7 +473,7 @@ function saveCustomDayConfiguration(dateKey) {
 
     saveState();
     renderCalendar();
-    alert('Configuração personalizada salva com sucesso!');
+    window.showFmuNotice('Configuração personalizada salva com sucesso!', 'Sucesso');
 }
 
 function generateMonthPDF() {
@@ -453,7 +489,7 @@ function generateMonthPDF() {
     const monthConfig = state.configurations[configKey];
     
     if (!monthConfig) {
-        alert('Configure o mês antes de gerar o PDF.');
+        window.showFmuNotice('Configure o mês antes de gerar o PDF.', 'Atenção');
         return;
     }
     
@@ -467,7 +503,7 @@ function generateMonthPDF() {
     });
     
     if (Object.keys(monthBookings).length === 0) {
-        alert('Não há agendamentos para este mês.');
+        window.showFmuNotice('Não há agendamentos para este mês.', 'Atenção');
         return;
     }
     
@@ -596,4 +632,192 @@ function showSetPasswordModal() {
     document.getElementById('confirmBookingPassword2').value = '';
     
     modal.classList.add('active');
+}
+
+function showPatientRegistrationModal() {
+    const modal = document.getElementById('patientRegistrationModal');
+    modal.classList.add('active');
+
+    const adminPatientSearchInput = document.getElementById('adminPatientSearchInput');
+    const adminPatientSearchResults = document.getElementById('adminPatientSearchResults');
+    const adminPatientDetails = document.getElementById('adminPatientDetails');
+    if (adminPatientSearchInput) adminPatientSearchInput.value = '';
+    if (adminPatientSearchResults) adminPatientSearchResults.innerHTML = '';
+    if (adminPatientDetails) adminPatientDetails.innerHTML = '';
+    
+    // Reset form
+    document.getElementById('regDoc').value = '';
+    document.getElementById('regName').value = '';
+    document.getElementById('regEmail').value = '';
+    document.getElementById('regPhone').value = '';
+    document.getElementById('regRank').value = '';
+    const civilTypeRadio = document.querySelector('input[name="regPatientType"][value="civil"]');
+    if (civilTypeRadio) civilTypeRadio.checked = true;
+    const regDocLabel = document.getElementById('regDocLabel');
+    const regDocInput = document.getElementById('regDoc');
+    if (regDocLabel) regDocLabel.textContent = 'CPF:';
+    if (regDocInput) {
+        regDocInput.placeholder = '000.000.000-00';
+        regDocInput.maxLength = 14;
+    }
+    document.getElementById('regRankField').style.display = 'none';
+    document.getElementById('regMilitaryUnitField').style.display = 'none';
+    if (civilTypeRadio) civilTypeRadio.dispatchEvent(new Event('change', { bubbles: true }));
+    document.querySelectorAll('input[name="regMilitaryUnit"]').forEach(r => r.checked = false);
+    
+    renderRegisteredPatientsList();
+}
+
+function showEmailConfigModal() {
+    const modal = document.getElementById('emailConfigModal');
+    const config = state.emailConfig || {};
+
+    document.getElementById('emailJsPublicKey').value = config.publicKey || '';
+    document.getElementById('emailJsServiceId').value = config.serviceId || '';
+    document.getElementById('emailJsTemplateId').value = config.templateId || '';
+    document.getElementById('emailFromName').value = config.fromName || 'FMU';
+    document.getElementById('emailReplyTo').value = config.replyTo || '';
+    document.getElementById('emailAdminCopy').value = config.adminEmail || '';
+    document.getElementById('emailAutoSend').checked = config.autoSend !== false;
+    
+    modal.classList.add('active');
+}
+
+function showVisualConfigModal() {
+    const modal = document.getElementById('visualConfigModal');
+    visualConfigDraft = {
+        logoDataUrl: state.appearanceConfig?.logoDataUrl || '',
+        backgroundDataUrl: state.appearanceConfig?.backgroundDataUrl || ''
+    };
+
+    const logoInput = document.getElementById('visualLogoInput');
+    const backgroundInput = document.getElementById('visualBackgroundInput');
+    if (logoInput) logoInput.value = '';
+    if (backgroundInput) backgroundInput.value = '';
+
+    renderVisualConfigPreview();
+    modal.classList.add('active');
+}
+
+function initializeVisualConfigModal() {
+    const modal = document.getElementById('visualConfigModal');
+    const closeBtn = document.getElementById('closeVisualConfig');
+    const cancelBtn = document.getElementById('cancelVisualConfig');
+    const saveBtn = document.getElementById('saveVisualConfig');
+    const logoInput = document.getElementById('visualLogoInput');
+    const backgroundInput = document.getElementById('visualBackgroundInput');
+    const resetLogoBtn = document.getElementById('resetLogoVisual');
+    const resetBackgroundBtn = document.getElementById('resetBackgroundVisual');
+
+    if (!modal || !closeBtn || !cancelBtn || !saveBtn) return;
+
+    const closeModal = () => modal.classList.remove('active');
+    closeBtn.addEventListener('click', closeModal);
+    cancelBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) closeModal();
+    });
+
+    if (logoInput) {
+        logoInput.addEventListener('change', async (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            try {
+                visualConfigDraft = visualConfigDraft || {};
+                visualConfigDraft.logoDataUrl = await resizeImageToDataUrl(file, 512, 512, 'image/png', 0.92);
+                renderVisualConfigPreview();
+            } catch (error) {
+                console.error('Erro ao carregar logo:', error);
+                window.showFmuNotice('Não foi possível carregar o logo. Tente outra imagem.', 'Erro');
+            }
+        });
+    }
+
+    if (backgroundInput) {
+        backgroundInput.addEventListener('change', async (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            try {
+                visualConfigDraft = visualConfigDraft || {};
+                visualConfigDraft.backgroundDataUrl = await resizeImageToDataUrl(file, 1600, 1200, 'image/jpeg', 0.82);
+                renderVisualConfigPreview();
+            } catch (error) {
+                console.error('Erro ao carregar background:', error);
+                window.showFmuNotice('Não foi possível carregar o background. Tente outra imagem.', 'Erro');
+            }
+        });
+    }
+
+    if (resetLogoBtn) {
+        resetLogoBtn.addEventListener('click', () => {
+            visualConfigDraft = visualConfigDraft || {};
+            visualConfigDraft.logoDataUrl = '';
+            if (logoInput) logoInput.value = '';
+            renderVisualConfigPreview();
+        });
+    }
+
+    if (resetBackgroundBtn) {
+        resetBackgroundBtn.addEventListener('click', () => {
+            visualConfigDraft = visualConfigDraft || {};
+            visualConfigDraft.backgroundDataUrl = '';
+            if (backgroundInput) backgroundInput.value = '';
+            renderVisualConfigPreview();
+        });
+    }
+
+    saveBtn.addEventListener('click', () => {
+        state.appearanceConfig = {
+            logoDataUrl: visualConfigDraft?.logoDataUrl || '',
+            backgroundDataUrl: visualConfigDraft?.backgroundDataUrl || ''
+        };
+        applyAppearanceConfig();
+        saveState();
+        window.showFmuNotice('Visual salvo com sucesso!', 'Sucesso');
+        closeModal();
+    });
+}
+
+function renderVisualConfigPreview() {
+    const logoPreview = document.getElementById('visualLogoPreview');
+    const backgroundPreview = document.getElementById('visualBackgroundPreview');
+    const logoSrc = visualConfigDraft?.logoDataUrl || DEFAULT_LOGO_SRC;
+    const backgroundSrc = visualConfigDraft?.backgroundDataUrl || DEFAULT_BACKGROUND_SRC;
+
+    if (logoPreview) logoPreview.src = logoSrc;
+    if (backgroundPreview) backgroundPreview.style.backgroundImage = `url("${String(backgroundSrc).replace(/"/g, '\\"')}")`;
+}
+
+function resizeImageToDataUrl(file, maxWidth, maxHeight, outputType, quality) {
+    if (!file.type.startsWith('image/')) {
+        return Promise.reject(new Error('Arquivo inválido.'));
+    }
+
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const image = new Image();
+            image.onload = () => {
+                const ratio = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+                const width = Math.max(1, Math.round(image.width * ratio));
+                const height = Math.max(1, Math.round(image.height * ratio));
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+
+                if (outputType === 'image/jpeg') {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, width, height);
+                }
+
+                ctx.drawImage(image, 0, 0, width, height);
+                resolve(canvas.toDataURL(outputType, quality));
+            };
+            image.onerror = reject;
+            image.src = reader.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
 }

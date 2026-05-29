@@ -48,7 +48,7 @@ function renderCalendarDays(calendar, config) {
 function createDayElement(day, config, daysInMonth) {
     const dayElement = document.createElement('div');
     dayElement.className = 'calendar-day';
-    dayElement.textContent = day;
+    dayElement.innerHTML = `<span>${day}</span>`;
 
     const dateKey = `${state.currentYear}-${state.currentMonth}-${day}`;
     const isBlocked = state.blockedDays[dateKey];
@@ -77,19 +77,39 @@ function createDayElement(day, config, daysInMonth) {
         if (!effectiveConfig) {
             dayElement.classList.add('disabled');
         } else {
-            applyBookingStatus(dayElement, dateKey, effectiveConfig);
-            dayElement.addEventListener('dblclick', () => {
-                // Check if booking password is enabled
-                if (state.bookingPassword && state.bookingPassword.enabled) {
-                    showBookingPasswordModal(day);
-                } else {
-                    window.dispatchEvent(new CustomEvent('openBookingModal', { detail: { day } }));
-                }
-            });
+            const hasAvailableSlots = applyBookingStatus(dayElement, dateKey, effectiveConfig);
+            if (hasAvailableSlots) {
+                dayElement.addEventListener('click', () => {
+                    selectCalendarDay(dayElement);
+                });
+
+                dayElement.addEventListener('dblclick', () => {
+                    selectCalendarDay(dayElement);
+                    // Check if booking password is enabled
+                    if (state.bookingPassword && state.bookingPassword.enabled) {
+                        showBookingPasswordModal(day);
+                    } else {
+                        // Show patient verification modal
+                        showPatientVerificationModal(day);
+                    }
+                });
+            }
         }
     }
 
     return dayElement;
+}
+
+
+function selectCalendarDay(dayElement) {
+    const calendar = document.getElementById('calendar');
+    if (!calendar || !dayElement) return;
+
+    calendar.querySelectorAll('.calendar-day.selected').forEach((selectedDay) => {
+        selectedDay.classList.remove('selected');
+    });
+
+    dayElement.classList.add('selected');
 }
 
 function showBookingPasswordModal(day) {
@@ -97,6 +117,24 @@ function showBookingPasswordModal(day) {
     modal.dataset.day = day;
     modal.classList.add('active');
     document.getElementById('bookingPasswordInput').focus();
+}
+
+function showPatientVerificationModal(day) {
+    const modal = document.getElementById('patientVerificationModal');
+    modal.dataset.day = day;
+    
+    // Reset form
+    document.getElementById('verifyDoc').value = '';
+    const verifyCivilRadio = document.querySelector('input[name="verifyPatientType"][value="civil"]');
+    if (verifyCivilRadio) verifyCivilRadio.checked = true;
+    document.getElementById('verifyDocLabel').textContent = 'Digite seu CPF:';
+    document.getElementById('verifyDoc').placeholder = '000.000.000-00';
+    document.getElementById('verifyDoc').maxLength = 14;
+    document.getElementById('verifyPatientBtn').disabled = true;
+    if (verifyCivilRadio) verifyCivilRadio.dispatchEvent(new Event('change', { bubbles: true }));
+    
+    modal.classList.add('active');
+    document.getElementById('verifyDoc').focus();
 }
 
 function applyBookingStatus(dayElement, dateKey, config) {
@@ -112,13 +150,19 @@ function applyBookingStatus(dayElement, dateKey, config) {
         bookedSlots += periodBookings.length;
     });
 
-    if (bookedSlots === 0) {
-        dayElement.classList.add('available');
-    } else if (bookedSlots < totalSlots) {
-        dayElement.classList.add('partially-booked');
-    } else {
-        dayElement.classList.add('fully-booked');
+    const availableSlots = Math.max(totalSlots - bookedSlots, 0);
+    dayElement.dataset.availableSlots = String(availableSlots);
+    dayElement.dataset.totalSlots = String(totalSlots);
+
+    if (availableSlots > 0) {
+        dayElement.classList.add(bookedSlots === 0 ? 'available' : 'partially-booked');
+        dayElement.title = `${availableSlots} vaga(s) disponível(is). Dê dois cliques para agendar.`;
+        return true;
     }
+
+    dayElement.classList.add('fully-booked');
+    dayElement.title = 'Sem vagas disponíveis neste dia';
+    return false;
 }
 
 export function renderBlockedCalendar() {
@@ -174,7 +218,7 @@ export function toggleBlockedDay(dateKey) {
         // Check only for active (non-cancelled) bookings
         const activeBookings = state.bookings[dateKey]?.filter(b => !b.cancellation) || [];
         if (activeBookings.length > 0) {
-            alert('Não é possível bloquear este dia. Existem agendamentos ativos que precisam ser cancelados primeiro.');
+            window.showFmuNotice('Não é possível bloquear este dia. Existem agendamentos ativos que precisam ser cancelados primeiro.', 'Atenção');
             return;
         }
         state.blockedDays[dateKey] = true;

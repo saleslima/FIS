@@ -3,16 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agendamento de Fisioterapia</title>
+    <title>FMU</title>
+    <meta name="theme-color" content="#111111">
+    <meta name="description" content="FMU - Agendamento de Fisioterapia">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="FMU">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <div id="pwaInstallPrompt" class="pwa-install-prompt" hidden>
+        <button id="pwaInstallButton" class="pwa-install-arrow" type="button" aria-label="Instalar FMU">
+            <span class="pwa-install-arrow-symbol" aria-hidden="true">↙</span>
+            <span class="pwa-install-label">Instalar FMU</span>
+        </button>
+    </div>
+
+
+    <div id="offlineOverlay" class="offline-overlay" hidden>
+        <div class="offline-card" role="alert" aria-live="assertive">
+            <div class="offline-icon" aria-hidden="true">
+                <svg width="86" height="86" viewBox="0 0 86 86" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="43" cy="43" r="40" fill="currentColor" opacity="0.08"/>
+                    <path d="M18 35C32 23 54 23 68 35" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+                    <path d="M29 47C37 40 49 40 57 47" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+                    <path d="M41 59H45" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+                    <path d="M22 66L66 22" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+                </svg>
+            </div>
+            <h2>Você está off-line</h2>
+            <p>Solicitamos conexão com a internet para sincronizar cadastros, agenda, prontuário e alterações do sistema.</p>
+            <p class="offline-small">Conecte-se ao Wi‑Fi ou dados móveis e toque em tentar novamente.</p>
+            <button id="offlineRetryBtn" class="btn-primary" type="button">Tentar novamente</button>
+        </div>
+    </div>
+
     <div class="container">
-      <header>
+        <header>
             <div class="header-content">
-                <img src="COPOM-NOVO (1).png" alt="COPOM Logo" class="logo">
+                <span class="logo-fiber-orbit" aria-hidden="false" id="logoFiberOrbit">
+                    <span class="logo-stack" id="logoSwapContainer" data-logo-state="primary">
+                        <img src="COPOM-NOVO (1).png" alt="Logo raio FMU" class="logo logo-primary">
+                        <img src="FMU-logo-alt.png" alt="Logo FMU Centro Universitário" class="logo logo-secondary">
+                    </span>
+                </span>
                 <div>
-                    <h1>Agendamento de Fisioterapia</h1>
+                    <h1>FMU - Agendamento de Fisioterapia</h1>
                     <div class="marquee-container">
                         <div class="marquee-text">criado pelo Setor de Tecnologia COPOM SP</div>
                     </div>
@@ -35,7 +73,12 @@
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
                 </button>
+                <button id="neonBorderBtn" class="neon-toggle" title="Cor neon do calendário" aria-label="Cor neon do calendário">
+                    <span aria-hidden="true">✦</span>
+                </button>
+                <input id="neonBorderColorInput" class="neon-color-input" type="color" value="#39ff14" aria-label="Escolher cor neon do calendário" />
                 <button id="adminModeBtn">Administrador</button>
+                <button id="exitAdminBtn" style="display: none;">Sair</button>
                 <button id="statisticsBtn">Visualizar Ocupação</button>
                 <button id="userModeBtn" class="active">Paciente</button>
             </div>
@@ -68,6 +111,20 @@
                         placeholder="Dia fim"
                         style="width: 120px;"
                     />
+                </div>
+
+                <div class="form-group monthly-limit-card">
+                    <label for="monthlyBookingLimitInput">Limite mensal de agendamentos por paciente:</label>
+                    <input
+                        type="number"
+                        id="monthlyBookingLimitInput"
+                        min="0"
+                        max="99"
+                        value="0"
+                        placeholder="0 = sem limite"
+                        style="width: 180px;"
+                    />
+                    <small class="config-help">Digite 0 para não limitar. Exemplo: 2 permite no máximo 2 agendamentos do mesmo paciente no mês selecionado.</small>
                 </div>
                 
                 <div class="form-group">
@@ -109,6 +166,201 @@
                 <button id="customizeDayBtn" class="btn-secondary" style="margin-left: 12px;">Personalizado</button>
                 <button id="enablePasswordBtn" class="btn-secondary" style="margin-left: 12px;">Habilitar Senha</button>
                 <button id="resetMonthBtn" class="btn-danger" style="margin-left: 12px;">Resetar Mês</button>
+                <button id="patientRegistrationBtn" class="btn-secondary" style="margin-left: 12px;">Cadastro de Pacientes</button>
+                <button id="emailConfigBtn" class="btn-secondary" style="margin-left: 12px;">Configurar Email</button>
+                <button id="visualConfigBtn" class="btn-secondary" style="margin-left: 12px;">Personalizar Visual</button>
+            </div>
+        </div>
+
+        <!-- Email Configuration Modal -->
+        <div id="emailConfigModal" class="modal">
+            <div class="modal-content">
+                <span class="close" id="closeEmailConfig">&times;</span>
+                <h2>Configuração de Email Automático</h2>
+                <div class="email-config-form">
+                    <div class="form-group">
+                        <p class="config-help">
+                            Este site é HTML, CSS e JavaScript. Por segurança, ele não usa senha SMTP/Gmail no navegador.
+                            Configure abaixo os dados do EmailJS para enviar o comprovante automaticamente após o agendamento.
+                        </p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="emailJsPublicKey">EMAILJS_PUBLIC_KEY:</label>
+                        <input type="text" id="emailJsPublicKey" placeholder="Ex.: AbCdEfGh123456" autocomplete="off"/>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="emailJsServiceId">EMAILJS_SERVICE_ID:</label>
+                        <input type="text" id="emailJsServiceId" placeholder="Ex.: service_xxxxx" autocomplete="off"/>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="emailJsTemplateId">EMAILJS_TEMPLATE_ID:</label>
+                        <input type="text" id="emailJsTemplateId" placeholder="Ex.: template_xxxxx" autocomplete="off"/>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="emailFromName">Nome do remetente:</label>
+                        <input type="text" id="emailFromName" placeholder="FMU" value="FMU"/>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="emailReplyTo">Email para resposta:</label>
+                        <input type="email" id="emailReplyTo" placeholder="stqcopomsp@gmail.com"/>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="emailAdminCopy">Email para cópia/administração (opcional):</label>
+                        <input type="email" id="emailAdminCopy" placeholder="stqcopomsp@gmail.com"/>
+                    </div>
+
+                    <div class="form-group checkbox-line">
+                        <label>
+                            <input type="checkbox" id="emailAutoSend" checked>
+                            Enviar comprovante automaticamente ao confirmar agendamento
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <small class="config-help">
+                            No template do EmailJS, use <strong>{{to_email}}</strong> como destinatário e <strong>{{reply_to}}</strong> como resposta.
+                            Variáveis disponíveis: patient_name, appointment_date, appointment_period, appointment_time, patient_doc, patient_email, patient_phone, complaint, message.
+                        </small>
+                    </div>
+                    
+                    <div class="booking-actions">
+                        <button class="btn-secondary" id="cancelEmailConfig">Cancelar</button>
+                        <button class="btn-primary" id="saveEmailConfig">Salvar Configuração</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visual Customization Modal -->
+        <div id="visualConfigModal" class="modal">
+            <div class="modal-content visual-config-modal-content">
+                <span class="close" id="closeVisualConfig">&times;</span>
+                <h2>Personalizar Visual</h2>
+                <p class="config-help">Altere o logo do cabeçalho e o background do sistema pelo painel administrador. Use imagens leves para carregar melhor no celular.</p>
+
+                <div class="visual-config-grid">
+                    <div class="visual-config-card">
+                        <h3>Logo do cabeçalho</h3>
+                        <div class="visual-preview visual-logo-preview">
+                            <img id="visualLogoPreview" src="COPOM-NOVO (1).png" alt="Prévia do logo">
+                        </div>
+                        <input type="file" id="visualLogoInput" accept="image/*">
+                        <button class="btn-secondary" id="resetLogoVisual" type="button">Usar logo padrão</button>
+                    </div>
+
+                    <div class="visual-config-card">
+                        <h3>Background do sistema</h3>
+                        <div id="visualBackgroundPreview" class="visual-preview visual-background-preview"></div>
+                        <input type="file" id="visualBackgroundInput" accept="image/*">
+                        <button class="btn-secondary" id="resetBackgroundVisual" type="button">Usar background padrão</button>
+                    </div>
+                </div>
+
+                <div class="visual-theme-note">
+                    <span aria-hidden="true">☀️</span> Modo claro mostra apenas um sol sutil.
+                    <span aria-hidden="true">🌙</span> Modo noturno mostra apenas uma lua sutil.
+                </div>
+
+                <div class="booking-actions">
+                    <button class="btn-secondary" id="cancelVisualConfig" type="button">Cancelar</button>
+                    <button class="btn-primary" id="saveVisualConfig" type="button">Salvar Visual</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Patient Registration Modal -->
+        <div id="patientRegistrationModal" class="modal">
+            <div class="modal-content patient-registration-modal-content">
+                <span class="close" id="closePatientRegistration">&times;</span>
+                <h2>Cadastro de Pacientes</h2>
+
+                <div class="patient-record-search-card">
+                    <h3>Procurar Paciente</h3>
+                    <p class="patient-record-help">Digite o CPF ou RE para localizar o cadastro e abrir o prontuário do paciente.</p>
+                    <div class="patient-record-search-row">
+                        <input type="text" id="adminPatientSearchInput" placeholder="Digite CPF ou RE" autocomplete="off"/>
+                        <button class="btn-primary" id="adminPatientSearchBtn" type="button">Procurar</button>
+                    </div>
+                    <div id="adminPatientSearchResults" class="patient-record-results"></div>
+                    <div id="adminPatientDetails" class="patient-record-details"></div>
+                </div>
+
+                <h3 class="patient-form-title">Novo / Atualizar Cadastro</h3>
+                <div class="patient-registration-form">
+                    <div class="form-group">
+                        <label>Tipo de Paciente:</label>
+                        <div class="filter-options">
+                            <label><input type="radio" name="regPatientType" value="civil" checked> Civil</label>
+                            <label><input type="radio" name="regPatientType" value="militar"> Militar</label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="regDoc" id="regDocLabel">CPF:</label>
+                        <input type="text" id="regDoc" placeholder="000.000.000-00" maxlength="14" required/>
+                    </div>
+                    
+                    <div id="regRankField" style="display: none;" class="form-group">
+                        <label for="regRank">Graduação:</label>
+                        <select id="regRank" style="width: 100%; padding: 12px; border: 2px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); border-radius: 8px; font-size: 14px;">
+                            <option value="">Selecione a graduação</option>
+                            <option value="Sd PM 2cl">Sd PM 2cl</option>
+                            <option value="Sd PM 1cl">Sd PM 1cl</option>
+                            <option value="Cb PM">Cb PM</option>
+                            <option value="3º Sgt PM">3º Sgt PM</option>
+                            <option value="2º Sgt PM">2º Sgt PM</option>
+                            <option value="1º Sgt PM">1º Sgt PM</option>
+                            <option value="Subten PM">Subten PM</option>
+                            <option value="Asp Of PM">Asp Of PM</option>
+                            <option value="2º Ten PM">2º Ten PM</option>
+                            <option value="1º Ten PM">1º Ten PM</option>
+                            <option value="Cap PM">Cap PM</option>
+                            <option value="Maj PM">Maj PM</option>
+                            <option value="Ten Cel PM">Ten Cel PM</option>
+                            <option value="Cel PM">Cel PM</option>
+                        </select>
+                    </div>
+
+                    <div id="regMilitaryUnitField" style="display: none;" class="form-group">
+                        <label>Unidade:</label>
+                        <div class="filter-options">
+                            <label><input type="radio" name="regMilitaryUnit" value="copom"> COPOM</label>
+                            <label><input type="radio" name="regMilitaryUnit" value="outros"> Outros</label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="regName">Nome Completo:</label>
+                        <input type="text" id="regName" placeholder="Nome completo" required style="text-transform: uppercase;"/>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="regEmail">Email:</label>
+                        <input type="email" id="regEmail" placeholder="email@exemplo.com" required/>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="regPhone">WhatsApp (DDD + Telefone):</label>
+                        <input type="tel" id="regPhone" placeholder="11999999999" maxlength="11" required/>
+                        <small style="color: #666; font-size: 12px;">Digite apenas números (11 dígitos)</small>
+                    </div>
+                    
+                    <div class="booking-actions">
+                        <button class="btn-secondary" id="cancelPatientRegistration">Cancelar</button>
+                        <button class="btn-primary" id="savePatientRegistration" disabled>Salvar Cadastro</button>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid var(--border-color);">
+                    <h3 style="margin-bottom: 16px;">Pacientes Cadastrados</h3>
+                    <div id="registeredPatientsList"></div>
+                </div>
             </div>
         </div>
 
@@ -138,6 +390,16 @@
             <div class="modal-content report-modal">
                 <span class="close" id="closeReport">&times;</span>
                 <h2>Relatório de Reservas</h2>
+                <div class="search-section" style="margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label>Filtrar por data específica (opcional):</label>
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <input type="date" id="reportDateFilter" style="padding: 12px; border: 2px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); border-radius: 8px; font-size: 14px;">
+                            <button id="applyReportDateFilter" class="btn-primary" style="margin: 0;">Buscar</button>
+                            <button id="clearReportDateFilter" class="btn-secondary" style="margin: 0;">Ver Todos</button>
+                        </div>
+                    </div>
+                </div>
                 <div id="reportContent" class="report-content"></div>
             </div>
         </div>
@@ -146,11 +408,19 @@
         <div id="searchBookingsModal" class="modal">
             <div class="modal-content report-modal">
                 <span class="close" id="closeSearchBookings">&times;</span>
-                <h2>Pesquisar Agendamentos por CPF</h2>
+                <h2>Pesquisar Agendamentos</h2>
                 
                 <div class="search-section">
                     <div class="form-group">
-                        <label for="searchCpf">CPF do Paciente:</label>
+                        <label>Tipo de Paciente:</label>
+                        <div class="filter-options">
+                            <label><input type="radio" name="adminSearchType" value="civil" checked> Civil (CPF)</label>
+                            <label><input type="radio" name="adminSearchType" value="militar"> Militar (RE)</label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="searchCpf" id="searchDocLabel">CPF do Paciente:</label>
                         <input 
                             type="text" 
                             id="searchCpf" 
@@ -248,6 +518,70 @@
                         <button class="btn-primary" id="confirmBookingPassword">Confirmar</button>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Patient Verification Modal for Booking -->
+        <div id="patientVerificationModal" class="modal">
+            <div class="modal-content">
+                <span class="close" id="closePatientVerification">&times;</span>
+                <h2>Verificar Cadastro</h2>
+                
+                <div class="search-section">
+                    <div class="form-group">
+                        <label>Tipo de Paciente:</label>
+                        <div class="filter-options">
+                            <label><input type="radio" name="verifyPatientType" value="civil" checked> Civil</label>
+                            <label><input type="radio" name="verifyPatientType" value="militar"> Militar</label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="verifyDoc" id="verifyDocLabel">Digite seu CPF:</label>
+                        <input 
+                            type="text" 
+                            id="verifyDoc" 
+                            placeholder="000.000.000-00"
+                            maxlength="14"
+                            required
+                        />
+                    </div>
+                    
+                    <button id="verifyPatientBtn" class="btn-primary" disabled>Verificar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Patient Search Modal -->
+        <div id="patientSearchModal" class="modal">
+            <div class="modal-content report-modal">
+                <span class="close" id="closePatientSearch">&times;</span>
+                <h2>Consultar Meus Agendamentos</h2>
+                
+                <div class="search-section">
+                    <div class="form-group">
+                        <label>Tipo de Paciente:</label>
+                        <div class="filter-options">
+                            <label><input type="radio" name="patientType" value="civil" checked> Civil</label>
+                            <label><input type="radio" name="patientType" value="militar"> Militar</label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="patientDoc" id="patientDocLabel">Digite seu CPF:</label>
+                        <input 
+                            type="text" 
+                            id="patientDoc" 
+                            placeholder="000.000.000-00"
+                            maxlength="14"
+                            required
+                        />
+                    </div>
+                    
+                    <button id="patientSearchBtn" class="btn-primary" disabled>Buscar Agendamentos</button>
+                </div>
+                
+                <div id="patientSearchResults" class="search-results"></div>
             </div>
         </div>
 
@@ -400,6 +734,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    <script src="pwa-install.js" defer></script>
+    <script src="notice.js" defer></script>
     <script type="module" src="firebase.js"></script>
     <script type="module" src="state.js"></script>
     <script type="module" src="calendar.js"></script>

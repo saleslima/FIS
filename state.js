@@ -8,6 +8,9 @@ export const state = {
     blockedDays: {},
     customDayConfigurations: {},
     bookingPassword: null,
+    registeredPatients: {},
+    emailConfig: null,
+    appearanceConfig: null,
     currentMonth: new Date().getMonth(),
     currentYear: new Date().getFullYear(),
     blockedCalendarMonth: new Date().getMonth(),
@@ -19,6 +22,36 @@ export const state = {
     isInitialized: false,
 };
 
+function normalizeEmailConfig(config) {
+    if (!config || typeof config !== 'object') return null;
+
+    const looksLikeEmailJs = config.provider === 'emailjs' || config.publicKey || config.serviceId || config.templateId;
+    if (!looksLikeEmailJs) {
+        // Ignore legacy SMTP settings so Gmail/App passwords are not kept in the front-end app.
+        return null;
+    }
+
+    return {
+        provider: 'emailjs',
+        publicKey: String(config.publicKey || '').trim(),
+        serviceId: String(config.serviceId || '').trim(),
+        templateId: String(config.templateId || '').trim(),
+        fromName: String(config.fromName || 'FMU').trim() || 'FMU',
+        replyTo: String(config.replyTo || '').trim(),
+        adminEmail: String(config.adminEmail || '').trim(),
+        autoSend: config.autoSend !== false
+    };
+}
+
+export function normalizeAppearanceConfig(config) {
+    if (!config || typeof config !== 'object') return null;
+
+    return {
+        logoDataUrl: String(config.logoDataUrl || '').trim(),
+        backgroundDataUrl: String(config.backgroundDataUrl || '').trim()
+    };
+}
+
 export function loadFromLocalStorage() {
     try {
         const savedConfig = localStorage.getItem('festasConfig');
@@ -26,12 +59,18 @@ export function loadFromLocalStorage() {
         const savedBlockedDays = localStorage.getItem('festasBlockedDays');
         const savedCustomDayConfigurations = localStorage.getItem('festasCustomDayConfigurations');
         const savedBookingPassword = localStorage.getItem('festasBookingPassword');
+        const savedRegisteredPatients = localStorage.getItem('festasRegisteredPatients');
+        const savedEmailConfig = localStorage.getItem('festasEmailConfig');
+        const savedAppearanceConfig = localStorage.getItem('festasAppearanceConfig');
 
         if (savedConfig) state.configurations = JSON.parse(savedConfig);
         if (savedBookings) state.bookings = JSON.parse(savedBookings);
         if (savedBlockedDays) state.blockedDays = JSON.parse(savedBlockedDays);
         if (savedCustomDayConfigurations) state.customDayConfigurations = JSON.parse(savedCustomDayConfigurations);
         if (savedBookingPassword) state.bookingPassword = JSON.parse(savedBookingPassword);
+        if (savedRegisteredPatients) state.registeredPatients = JSON.parse(savedRegisteredPatients);
+        if (savedEmailConfig) state.emailConfig = normalizeEmailConfig(JSON.parse(savedEmailConfig));
+        if (savedAppearanceConfig) state.appearanceConfig = normalizeAppearanceConfig(JSON.parse(savedAppearanceConfig));
 
         console.log('✓ Dados carregados do localStorage');
     } catch (error) {
@@ -46,6 +85,9 @@ export function saveToLocalStorage() {
         localStorage.setItem('festasBlockedDays', JSON.stringify(state.blockedDays));
         localStorage.setItem('festasCustomDayConfigurations', JSON.stringify(state.customDayConfigurations));
         localStorage.setItem('festasBookingPassword', JSON.stringify(state.bookingPassword));
+        localStorage.setItem('festasRegisteredPatients', JSON.stringify(state.registeredPatients));
+        localStorage.setItem('festasEmailConfig', JSON.stringify(normalizeEmailConfig(state.emailConfig)));
+        localStorage.setItem('festasAppearanceConfig', JSON.stringify(normalizeAppearanceConfig(state.appearanceConfig)));
     } catch (error) {
         console.error('Error saving to localStorage:', error);
     }
@@ -57,8 +99,9 @@ export async function loadFromFirebase() {
     
     if (!isReady || !isFirebaseAvailable()) {
         console.error('❌ Firebase não está disponível');
-        alert('❌ ERRO: Não foi possível conectar ao Firebase. Recarregue a página.');
+        state.isOnline = false;
         state.isInitialized = true;
+        window.dispatchEvent(new CustomEvent('appOffline'));
         return;
     }
 
@@ -71,13 +114,19 @@ export async function loadFromFirebase() {
         const blockedDaysRef = db.ref('blockedDays');
         const customDayConfigurationsRef = db.ref('customDayConfigurations');
         const bookingPasswordRef = db.ref('bookingPassword');
+        const registeredPatientsRef = db.ref('registeredPatients');
+        const emailConfigRef = db.ref('emailConfig');
+        const appearanceConfigRef = db.ref('appearanceConfig');
 
-        const [configurationsSnapshot, bookingsSnapshot, blockedDaysSnapshot, customDayConfigurationsSnapshot, bookingPasswordSnapshot] = await Promise.all([
+        const [configurationsSnapshot, bookingsSnapshot, blockedDaysSnapshot, customDayConfigurationsSnapshot, bookingPasswordSnapshot, registeredPatientsSnapshot, emailConfigSnapshot, appearanceConfigSnapshot] = await Promise.all([
             configurationsRef.once('value'),
             bookingsRef.once('value'),
             blockedDaysRef.once('value'),
             customDayConfigurationsRef.once('value'),
-            bookingPasswordRef.once('value')
+            bookingPasswordRef.once('value'),
+            registeredPatientsRef.once('value'),
+            emailConfigRef.once('value'),
+            appearanceConfigRef.once('value')
         ]);
 
         if (configurationsSnapshot.exists()) {
@@ -100,21 +149,33 @@ export async function loadFromFirebase() {
             state.bookingPassword = bookingPasswordSnapshot.val();
             console.log('✓ Senha de agendamento carregada do Firebase');
         }
+        if (registeredPatientsSnapshot.exists()) {
+            state.registeredPatients = registeredPatientsSnapshot.val();
+            console.log('✓ Pacientes cadastrados carregados do Firebase');
+        }
+        if (emailConfigSnapshot.exists()) {
+            state.emailConfig = normalizeEmailConfig(emailConfigSnapshot.val());
+            console.log('✓ Configuração de email carregada do Firebase');
+        }
+        if (appearanceConfigSnapshot.exists()) {
+            state.appearanceConfig = normalizeAppearanceConfig(appearanceConfigSnapshot.val());
+            console.log('✓ Personalização visual carregada do Firebase');
+        }
 
-        setupRealtimeListeners(configurationsRef, bookingsRef, blockedDaysRef, customDayConfigurationsRef, bookingPasswordRef);
+        setupRealtimeListeners(configurationsRef, bookingsRef, blockedDaysRef, customDayConfigurationsRef, bookingPasswordRef, registeredPatientsRef, emailConfigRef, appearanceConfigRef);
 
         state.isOnline = true;
         state.isInitialized = true;
         console.log('✓ Firebase conectado e sincronizado com sucesso!');
     } catch (error) {
         console.error('❌ Erro ao conectar com Firebase:', error);
-        alert('❌ ERRO: Não foi possível sincronizar com o Firebase. Verifique sua conexão e recarregue a página.');
         state.isOnline = false;
         state.isInitialized = true;
+        window.dispatchEvent(new CustomEvent('appOffline'));
     }
 }
 
-function setupRealtimeListeners(configurationsRef, bookingsRef, blockedDaysRef, customDayConfigurationsRef, bookingPasswordRef) {
+function setupRealtimeListeners(configurationsRef, bookingsRef, blockedDaysRef, customDayConfigurationsRef, bookingPasswordRef, registeredPatientsRef, emailConfigRef, appearanceConfigRef) {
     configurationsRef.on('value', (snapshot) => {
         if (snapshot.exists() && !state.syncInProgress) {
             state.configurations = snapshot.val();
@@ -154,6 +215,30 @@ function setupRealtimeListeners(configurationsRef, bookingsRef, blockedDaysRef, 
             window.dispatchEvent(new CustomEvent('stateUpdated'));
         }
     });
+
+    registeredPatientsRef.on('value', (snapshot) => {
+        if (snapshot.exists() && !state.syncInProgress) {
+            state.registeredPatients = snapshot.val();
+            console.log('🔄 Pacientes cadastrados atualizados em tempo real');
+            window.dispatchEvent(new CustomEvent('stateUpdated'));
+        }
+    });
+
+    emailConfigRef.on('value', (snapshot) => {
+        if (snapshot.exists() && !state.syncInProgress) {
+            state.emailConfig = normalizeEmailConfig(snapshot.val());
+            console.log('🔄 Configuração de email atualizada em tempo real');
+            window.dispatchEvent(new CustomEvent('stateUpdated'));
+        }
+    });
+
+    appearanceConfigRef.on('value', (snapshot) => {
+        if (snapshot.exists() && !state.syncInProgress) {
+            state.appearanceConfig = normalizeAppearanceConfig(snapshot.val());
+            console.log('🔄 Personalização visual atualizada em tempo real');
+            window.dispatchEvent(new CustomEvent('stateUpdated'));
+        }
+    });
 }
 
 export async function saveToFirebase() {
@@ -162,7 +247,7 @@ export async function saveToFirebase() {
     
     if (!isReady || !isFirebaseAvailable()) {
         console.error('❌ Firebase não disponível');
-        alert('❌ ERRO: Não é possível salvar. Sem conexão com Firebase.');
+        window.showFmuNotice('ERRO: Não é possível salvar. Sem conexão com Firebase.', 'Erro de conexão');
         return;
     }
 
@@ -175,12 +260,15 @@ export async function saveToFirebase() {
         await db.ref('blockedDays').set(state.blockedDays);
         await db.ref('customDayConfigurations').set(state.customDayConfigurations);
         await db.ref('bookingPassword').set(state.bookingPassword);
+        await db.ref('registeredPatients').set(state.registeredPatients);
+        await db.ref('emailConfig').set(normalizeEmailConfig(state.emailConfig));
+        await db.ref('appearanceConfig').set(normalizeAppearanceConfig(state.appearanceConfig));
 
         state.isOnline = true;
         console.log('✓ Dados sincronizados com Firebase');
     } catch (error) {
         console.error('❌ Erro ao salvar no Firebase:', error);
-        alert('❌ ERRO: Não foi possível salvar os dados. Verifique sua conexão.');
+        window.showFmuNotice('ERRO: Não foi possível salvar os dados. Verifique sua conexão.', 'Erro de conexão');
         state.isOnline = false;
     } finally {
         state.syncInProgress = false;
@@ -192,7 +280,7 @@ export function saveState() {
     if (state.isInitialized) {
         saveToFirebase().catch(err => {
             console.error('❌ Falha ao salvar no Firebase:', err);
-            alert('❌ ERRO: Não foi possível salvar. Verifique sua conexão com a internet.');
+            window.showFmuNotice('ERRO: Não foi possível salvar. Verifique sua conexão com a internet.', 'Erro de conexão');
         });
     }
 }
