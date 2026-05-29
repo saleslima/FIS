@@ -2758,3 +2758,14 @@ body.dark-mode .logo-fiber-orbit::before {
         transition: none;
     }
 }
+
+
+/* Ajuste único: logo FMU alternado no mesmo tamanho visual do logo do raio */
+.logo-stack .logo-secondary {
+    transform: scale(0.82) !important;
+    transform-origin: center center !important;
+}
+
+.logo-fiber-orbit.show-alt .logo-secondary {
+    transform: scale(0.82) !important;
+}
