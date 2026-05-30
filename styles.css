@@ -2717,7 +2717,7 @@ body.dark-mode .logo-fiber-orbit::before {
 
 .logo-stack .logo {
     grid-area: 1 / 1;
-    transition: opacity 2.4s ease, transform 2.4s ease, filter 2.4s ease;
+    transition: opacity 5s ease, transform 5s ease, filter 5s ease;
     will-change: opacity, transform;
     backface-visibility: hidden;
 }
@@ -2768,4 +2768,89 @@ body.dark-mode .logo-fiber-orbit::before {
 
 .logo-fiber-orbit.show-alt .logo-secondary {
     transform: scale(0.82) !important;
+}
+
+
+/* Ajustes finais solicitados: função em lista, usuário/especialista e logo de abertura */
+.role-select-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 213, 0, 0.20);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.role-select-wrap label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+
+.role-select {
+    min-width: 160px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 2px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.user-registration-grid {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
+    gap: 18px;
+}
+
+.user-form-card,
+.user-list-card {
+    border: 2px solid var(--border-color);
+    border-radius: 14px;
+    padding: 18px;
+    background: var(--bg-primary);
+}
+
+.specialty-add-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: end;
+}
+
+.user-card-actions,
+.patient-card-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.recent-patients-note {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
+.logo-startup-clone {
+    z-index: 20000 !important;
+}
+
+.logo-startup-clone .logo,
+.logo-startup-clone img.logo {
+    height: 160px !important;
+}
+
+@media (max-width: 900px) {
+    .user-registration-grid {
+        grid-template-columns: 1fr;
+    }
+    .role-select-wrap {
+        width: 100%;
+        justify-content: space-between;
+    }
+    .role-select {
+        flex: 1;
+    }
 }

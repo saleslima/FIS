@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fmu-cache-v20260529-17-logo-fmu-mesmo-tamanho';
+const CACHE_NAME = 'fmu-cache-v20260530-18-usuarios-admin-logo';
 const APP_SHELL = [
     './',
     './index.html',

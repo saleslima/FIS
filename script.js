@@ -67,7 +67,7 @@ function startLogoIntroAnimation() {
     document.body.classList.add('logo-intro-running');
 
     const viewportMin = Math.min(window.innerWidth, window.innerHeight);
-    const desiredStartSize = window.innerWidth <= 768 ? viewportMin * 0.8 : Math.min(viewportMin * 0.55, 420);
+    const desiredStartSize = Math.max(window.innerWidth, window.innerHeight) * 1.08;
     const scale = Math.max(1, desiredStartSize / Math.max(targetRect.width, targetRect.height));
     const targetCenterX = targetRect.left + targetRect.width / 2;
     const targetCenterY = targetRect.top + targetRect.height / 2;
@@ -96,7 +96,7 @@ function startLogoIntroAnimation() {
             offset: 1
         }
     ], {
-        duration: 3000,
+        duration: 6000,
         easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
         fill: 'forwards'
     });
@@ -184,6 +184,94 @@ function initializeNeonCalendarControl() {
     });
 }
 
+function formatCpfForRole(value) {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
+    return digits.length === 11 ? digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : digits;
+}
+
+function findSystemUserByCpf(cpf) {
+    const cleanCpf = String(cpf || '').replace(/\D/g, '');
+    return Object.entries(state.systemUsers || {}).find(([, user]) => String(user.cpf || '').replace(/\D/g, '') === cleanCpf) || null;
+}
+
+async function openSpecialistAccess() {
+    const cpf = await window.showFmuTextPrompt('Digite o CPF do especialista:', 'Acesso Especialista', '000.000.000-00');
+    if (cpf === null) return false;
+    const cleanCpf = String(cpf || '').replace(/\D/g, '');
+    if (cleanCpf.length !== 11) {
+        await window.showFmuNotice('CPF deve conter 11 dígitos.', 'Acesso Especialista');
+        return false;
+    }
+
+    const entry = findSystemUserByCpf(cleanCpf);
+    if (!entry) {
+        await window.showFmuNotice('Especialista não cadastrado. Solicite cadastro ao administrador.', 'Acesso negado');
+        return false;
+    }
+
+    const [userId, user] = entry;
+    const password = await window.showFmuPasswordPrompt(`Digite a senha de ${user.name || formatCpfForRole(cleanCpf)}:`, 'Acesso Especialista');
+    if (password === null) return false;
+    if (String(password) !== String(user.password || '')) {
+        await window.showFmuNotice('Senha incorreta.', 'Acesso negado');
+        return false;
+    }
+
+    if (user.mustChangePassword) {
+        const newPassword = await window.showFmuPasswordPrompt('Digite uma nova senha definitiva:', 'Alterar senha temporária');
+        if (newPassword === null) return false;
+        if (String(newPassword).trim().length < 4) {
+            await window.showFmuNotice('A nova senha deve ter pelo menos 4 caracteres.', 'Alterar senha');
+            return false;
+        }
+        state.systemUsers[userId].password = String(newPassword).trim();
+        state.systemUsers[userId].mustChangePassword = false;
+        state.systemUsers[userId].updatedAt = new Date().toISOString();
+        const { saveState } = await import('./state.js');
+        saveState();
+        await window.showFmuNotice('Senha alterada com sucesso.', 'Acesso Especialista');
+    }
+
+    state.currentMode = 'specialist';
+    const adminPanel = document.getElementById('adminPanel');
+    const userPanel = document.getElementById('userPanel');
+    if (adminPanel) adminPanel.classList.remove('active');
+    if (userPanel) userPanel.classList.add('active');
+    await window.showFmuNotice(`Bem-vindo(a), ${user.name}. Use a busca de pacientes para abrir prontuários e registrar observações.`, 'Especialista');
+    const patientBtn = document.getElementById('patientRegistrationBtn');
+    if (patientBtn) patientBtn.click();
+    return true;
+}
+
+function initializeRoleSelect() {
+    const roleSelect = document.getElementById('roleSelect');
+    if (!roleSelect) return;
+    roleSelect.addEventListener('change', async () => {
+        const selected = roleSelect.value;
+        if (selected === 'patient') {
+            const exitAdminBtn = document.getElementById('exitAdminBtn');
+            if (exitAdminBtn && exitAdminBtn.style.display !== 'none') exitAdminBtn.click();
+            state.currentMode = 'user';
+            const adminPanel = document.getElementById('adminPanel');
+            const userPanel = document.getElementById('userPanel');
+            if (adminPanel) adminPanel.classList.remove('active');
+            if (userPanel) userPanel.classList.add('active');
+            renderCalendar();
+            return;
+        }
+        if (selected === 'admin') {
+            const adminBtn = document.getElementById('adminModeBtn');
+            if (adminBtn) adminBtn.click();
+            roleSelect.value = 'patient';
+            return;
+        }
+        if (selected === 'specialist') {
+            const ok = await openSpecialistAccess();
+            roleSelect.value = ok ? 'specialist' : 'patient';
+        }
+    });
+}
+
 function initializeModeToggle() {
     const adminBtn = document.getElementById('adminModeBtn');
     const exitAdminBtn = document.getElementById('exitAdminBtn');
@@ -254,6 +342,7 @@ async function initApp() {
     
     initializeOfflineOverlay();
     initializeModeToggle();
+    initializeRoleSelect();
     initializeNeonCalendarControl();
     initializeAlternatingLogo();
     initializeAdminPanel();

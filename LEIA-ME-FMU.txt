@@ -122,3 +122,15 @@ ATUALIZACAO - INSTALACAO E NEON NO LOGO
 - O ponto orbital foi ajustado para ficar na frente do logo, e nao atras.
 
 - o logo do raio agora alterna automaticamente com o logo FMU a cada 30 segundos, com transição suave;
+
+Atualização desta versão:
+- Pesquisa de agendamentos corrigida para localizar períodos configurados por dia da semana ou dia personalizado.
+- Cadastro de pacientes mostra somente os 3 últimos cadastrados; demais registros devem ser localizados pela busca de CPF/RE.
+- Busca de paciente no admin limitada a 11 dígitos e filtra automaticamente a partir do terceiro dígito.
+- Botão Habilitar Senha removido do painel administrativo.
+- Adicionado Cadastro Usuários com cadastrar, editar e excluir especialistas.
+- Especialidades padrão: Fisioterapeuta e Massagista; o administrador pode adicionar novas especialidades.
+- Usuário especialista recebe senha temporária por e-mail, quando EmailJS estiver configurado, e deve alterar no primeiro acesso.
+- A escolha de função agora aparece em lista: Paciente, Especialista e Administrador. Apenas Paciente não solicita senha.
+- Transição entre logos ajustada para 5 segundos.
+- Ao abrir o sistema, o logo do raio ocupa a tela e retorna em 6 segundos ao tamanho/local original.

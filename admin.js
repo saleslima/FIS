@@ -45,8 +45,10 @@ export function initializeAdminPanel() {
     document.getElementById('resetMonthBtn').addEventListener('click', resetMonth);
     document.getElementById('customizeDayBtn').addEventListener('click', showCustomizeDayModal);
     document.getElementById('generatePdfBtn').addEventListener('click', generateMonthPDF);
-    document.getElementById('enablePasswordBtn').addEventListener('click', showSetPasswordModal);
     document.getElementById('patientRegistrationBtn').addEventListener('click', showPatientRegistrationModal);
+    document.getElementById('userRegistrationBtn').addEventListener('click', () => {
+        window.dispatchEvent(new CustomEvent('showUserRegistration'));
+    });
     document.getElementById('emailConfigBtn').addEventListener('click', showEmailConfigModal);
     document.getElementById('visualConfigBtn').addEventListener('click', showVisualConfigModal);
     initializeVisualConfigModal();

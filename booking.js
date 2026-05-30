@@ -1030,6 +1030,19 @@ export function showSearchBookings() {
     document.getElementById('searchResults').innerHTML = '';
 }
 
+function getSearchBookingPeriod(dateKey, booking) {
+    const [year, month, day] = dateKey.split('-').map(Number);
+    const customConfig = state.customDayConfigurations && state.customDayConfigurations[dateKey];
+    const monthConfig = state.configurations && state.configurations[`${year}-${month}`];
+    let config = customConfig || null;
+    if (!config && monthConfig && monthConfig.daysConfig) {
+        const dayOfWeek = new Date(year, month, day).getDay();
+        config = monthConfig.daysConfig[dayOfWeek] || null;
+    }
+    if (!config && monthConfig && monthConfig.periods) config = monthConfig;
+    return config?.periods?.[booking.periodIndex] || null;
+}
+
 export function searchBookingsByCpf() {
     const docInput = document.getElementById('searchCpf');
     const searchResults = document.getElementById('searchResults');
@@ -1061,7 +1074,7 @@ export function searchBookingsByCpf() {
     const now = new Date();
     
     // Search through all bookings
-    Object.entries(state.bookings).forEach(([dateKey, bookings]) => {
+    Object.entries(state.bookings || {}).forEach(([dateKey, bookings]) => {
         bookings.forEach((booking, index) => {
             const matches = searchType === 'civil'
                 ? (booking.cpf && booking.cpf.replace(/\D/g, '') === searchDoc)
@@ -1069,17 +1082,7 @@ export function searchBookingsByCpf() {
             
             if (matches) {
                 const [year, month, day] = dateKey.split('-').map(Number);
-                const configKey = `${year}-${month}`;
-                const customConfig = state.customDayConfigurations && state.customDayConfigurations[dateKey];
-                const monthConfig = state.configurations[configKey];
-                let config = null;
-                if (customConfig) {
-                    config = customConfig;
-                } else if (monthConfig && monthConfig.daysConfig) {
-                    const dayOfWeek = new Date(year, month, day).getDay();
-                    config = monthConfig.daysConfig[dayOfWeek] || null;
-                }
-                const period = config?.periods[booking.periodIndex];
+                const period = getSearchBookingPeriod(dateKey, booking);
                 
                 // Determine booking status
                 const isCancelled = !!booking.cancellation;
@@ -1125,10 +1128,7 @@ export function searchBookingsByCpf() {
     
     foundBookings.forEach(({ dateKey, booking, bookingIndex }) => {
         const [year, month, day] = dateKey.split('-').map(Number);
-        const config = state.configurations[`${year}-${month}`];
-        const customConfig = state.customDayConfigurations && state.customDayConfigurations[dateKey];
-        const effectiveConfig = customConfig || config;
-        const period = effectiveConfig?.periods[booking.periodIndex];
+        const period = getSearchBookingPeriod(dateKey, booking);
         
         if (!period) return;
         
