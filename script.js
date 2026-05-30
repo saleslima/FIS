@@ -314,7 +314,7 @@ function initializeModeToggle() {
     exitAdminBtn.addEventListener('click', () => {
         state.currentMode = 'user';
         adminBtn.classList.remove('active');
-        adminBtn.style.display = 'block';
+        adminBtn.style.display = 'none';
         exitAdminBtn.style.display = 'none';
         userBtn.classList.add('active');
         adminPanel.classList.remove('active');

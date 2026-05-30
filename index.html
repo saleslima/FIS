@@ -85,10 +85,10 @@
                         <option value="admin">Administrador</option>
                     </select>
                 </div>
-                <button id="adminModeBtn" class="legacy-role-btn">Administrador</button>
+                <button id="adminModeBtn" class="legacy-role-btn" type="button" hidden style="display:none;">Administrador</button>
                 <button id="exitAdminBtn" style="display: none;">Sair</button>
                 <button id="statisticsBtn">Visualizar Ocupação</button>
-                <button id="userModeBtn" class="active legacy-role-btn">Paciente</button>
+                <button id="userModeBtn" class="active legacy-role-btn" type="button" hidden style="display:none;">Paciente</button>
             </div>
         </header>
 
@@ -101,26 +101,6 @@
                     <select id="monthSelect"></select>
                     <select id="yearSelect"></select>
                 </div>
-                <div class="form-group">
-                    <label>Período de Dias Ativos no Mês:</label>
-                    <input 
-                        type="number" 
-                        id="startDayInput" 
-                        min="1" 
-                        max="31" 
-                        placeholder="Dia início"
-                        style="width: 120px; margin-right: 8px;"
-                    />
-                    <input 
-                        type="number" 
-                        id="endDayInput" 
-                        min="1" 
-                        max="31" 
-                        placeholder="Dia fim"
-                        style="width: 120px;"
-                    />
-                </div>
-
                 <div class="form-group monthly-limit-card">
                     <label for="monthlyBookingLimitInput">Limite mensal de agendamentos por paciente:</label>
                     <input
@@ -390,7 +370,7 @@
                         </div>
                         <div class="form-group">
                             <label for="userCpfInput">CPF:</label>
-                            <input type="text" id="userCpfInput" placeholder="000.000.000-00" maxlength="14" inputmode="numeric">
+                            <input type="text" id="userCpfInput" placeholder="000.000.000-00" maxlength="14" inputmode="numeric" autocomplete="off" title="Digite 11 números do CPF">
                         </div>
                         <div class="form-group">
                             <label for="userSpecialtySelect">Especialidade:</label>

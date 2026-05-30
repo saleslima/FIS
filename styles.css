@@ -2854,3 +2854,42 @@ body.dark-mode .logo-fiber-orbit::before {
         flex: 1;
     }
 }
+
+
+/* Ajustes finais: menu por lista, botões à esquerda e remoção visual dos botões antigos */
+.toggle-mode {
+    justify-content: flex-start !important;
+    margin-left: 0 !important;
+    margin-right: auto !important;
+}
+
+.legacy-role-btn,
+#adminModeBtn,
+#userModeBtn {
+    display: none !important;
+}
+
+.config-section > button,
+.booking-actions,
+.user-card-actions,
+.patient-card-actions {
+    justify-content: flex-start !important;
+    text-align: left !important;
+}
+
+.user-card-actions,
+.patient-card-actions {
+    justify-content: flex-start !important;
+}
+
+#userCpfInput {
+    letter-spacing: 0.04em;
+}
+
+/* Botões principais alinhados à esquerda no cabeçalho */
+header .toggle-mode {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+}

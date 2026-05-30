@@ -1412,7 +1412,11 @@ function initializePatientVerificationModal() {
         }
     });
     
+    docInput.addEventListener('blur', () => {
+        validateIncompleteDocument(docInput.value, currentType, 'Verificação de Cadastro');
+    });
     verifyBtn.addEventListener('click', () => {
+        if (!validateIncompleteDocument(docInput.value, currentType, 'Verificação de Cadastro')) return;
         const doc = currentType === 'civil' 
             ? docInput.value.replace(/\D/g, '')
             : docInput.value.replace(/-/g, '');
@@ -1557,6 +1561,18 @@ function initializePatientRegistrationModal() {
         validateForm();
     });
     
+    docInput.addEventListener('blur', () => {
+        validateIncompleteDocument(docInput.value, currentType, 'Cadastro de Paciente');
+    });
+    emailInput.addEventListener('blur', () => {
+        const email = normalizeEmail(emailInput.value);
+        if (!email) return;
+        const doc = currentType === 'civil' ? normalizeCpf(docInput.value) : normalizeReValue(docInput.value);
+        const patientId = currentType === 'civil' ? `civil_${doc}` : `militar_${doc}`;
+        const duplicated = findGlobalDuplicate({ email, excludePatientId: patientId });
+        if (duplicated) window.showFmuNotice(duplicated, 'Cadastro duplicado');
+    });
+
     nameInput.addEventListener('input', () => {
         nameInput.value = nameInput.value.toUpperCase();
         validateForm();
@@ -1581,8 +1597,21 @@ function initializePatientRegistrationModal() {
         
         const patientId = currentType === 'civil' ? `civil_${doc}` : `militar_${doc}`;
         
+        if (!validateIncompleteDocument(docInput.value, currentType, 'Cadastro de Paciente')) return;
+        
         if (!state.registeredPatients) {
             state.registeredPatients = {};
+        }
+        
+        const duplicateMessage = findGlobalDuplicate({
+            cpf: currentType === 'civil' ? doc : '',
+            re: currentType === 'militar' ? doc : '',
+            email: emailInput.value,
+            excludePatientId: patientId
+        });
+        if (duplicateMessage) {
+            window.showFmuNotice(duplicateMessage + ' O sistema não aceita CPF, RE ou email repetidos, mesmo em funções diferentes.', 'Cadastro duplicado');
+            return;
         }
         
         const previousPatient = state.registeredPatients[patientId];
@@ -1719,7 +1748,12 @@ function initializePatientSearchModal() {
         }
     });
     
+    docInput.addEventListener('blur', () => {
+        validateIncompleteDocument(docInput.value, currentType, 'Consulta de Agendamentos');
+    });
+
     searchBtn.addEventListener('click', () => {
+        if (!validateIncompleteDocument(docInput.value, currentType, 'Consulta de Agendamentos')) return;
         // Check if patient is registered and open booking
         const doc = currentType === 'civil' 
             ? docInput.value.replace(/\D/g, '')
@@ -1790,8 +1824,9 @@ function searchPatientBookings(type, limitRecords = null) {
     const now = new Date();
     
     // Search through all bookings
-    Object.entries(state.bookings).forEach(([dateKey, bookings]) => {
-        bookings.forEach((booking, index) => {
+    Object.entries(state.bookings || {}).forEach(([dateKey, bookings]) => {
+        const bookingList = Array.isArray(bookings) ? bookings : Object.values(bookings || {});
+        bookingList.forEach((booking, index) => {
             const matches = type === 'civil'
                 ? (booking.cpf && booking.cpf.replace(/\D/g, '') === searchDoc)
                 : (booking.re && booking.re.toUpperCase() === searchDoc.toUpperCase());
@@ -1909,6 +1944,49 @@ function normalizeCpf(value) {
     return String(value || '').replace(/\D/g, '').slice(0, 11);
 }
 
+function normalizeEmail(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function normalizeReValue(value) {
+    return String(value || '').replace(/-/g, '').trim().toUpperCase().slice(0, 7);
+}
+
+function validateIncompleteDocument(value, type, title = 'Documento incompleto') {
+    const clean = type === 'civil' ? normalizeCpf(value) : normalizeReValue(value);
+    if (!clean) return true;
+    if (type === 'civil' && clean.length < 11) {
+        window.showFmuNotice('CPF incompleto. Digite os 11 números do CPF para continuar.', title);
+        return false;
+    }
+    if (type === 'militar' && clean.length < 7) {
+        window.showFmuNotice('RE incompleto. Digite 6 números e o dígito final para continuar.', title);
+        return false;
+    }
+    return true;
+}
+
+function findGlobalDuplicate({ cpf = '', re = '', email = '', excludePatientId = '', excludeUserId = '' } = {}) {
+    const cleanCpf = normalizeCpf(cpf);
+    const cleanRe = normalizeReValue(re);
+    const cleanEmail = normalizeEmail(email);
+
+    for (const [id, patient] of Object.entries(state.registeredPatients || {})) {
+        if (excludePatientId && id === excludePatientId) continue;
+        if (cleanCpf && normalizeCpf(patient.cpf) === cleanCpf) return 'Já existe cadastro com este CPF.';
+        if (cleanRe && normalizeReValue(patient.re) === cleanRe) return 'Já existe cadastro com este RE.';
+        if (cleanEmail && normalizeEmail(patient.email) === cleanEmail) return 'Já existe cadastro com este email.';
+    }
+
+    for (const [id, user] of Object.entries(state.systemUsers || {})) {
+        if (excludeUserId && id === excludeUserId) continue;
+        if (cleanCpf && normalizeCpf(user.cpf) === cleanCpf) return 'Já existe usuário cadastrado com este CPF.';
+        if (cleanEmail && normalizeEmail(user.email) === cleanEmail) return 'Já existe usuário cadastrado com este email.';
+    }
+
+    return '';
+}
+
 function generateTemporaryPassword(length = 8) {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let password = '';
@@ -2000,12 +2078,22 @@ async function saveSystemUserFromForm() {
         return;
     }
 
-    const userId = editId || getUserIdFromCpf(cpf);
-    const previous = state.systemUsers?.[userId];
+    state.systemUsers = state.systemUsers || {};
+    const calculatedUserId = getUserIdFromCpf(cpf);
+    const previous = editId ? state.systemUsers?.[editId] : state.systemUsers?.[calculatedUserId];
+    const duplicateMessage = findGlobalDuplicate({ cpf, email, excludeUserId: editId || calculatedUserId });
+    if (duplicateMessage) {
+        window.showFmuNotice(duplicateMessage + ' O sistema não aceita CPF, RE ou email repetidos, mesmo em funções diferentes.', 'Cadastro duplicado');
+        return;
+    }
+
+    const userId = calculatedUserId;
+    if (editId && editId !== userId && state.systemUsers[editId]) {
+        delete state.systemUsers[editId];
+    }
     const temporaryPassword = passwordField || (previous ? previous.password : generateTemporaryPassword());
     const mustChangePassword = passwordField ? true : (!previous || previous.mustChangePassword === true);
 
-    state.systemUsers = state.systemUsers || {};
     state.systemUsers[userId] = {
         name,
         cpf,
@@ -2064,6 +2152,20 @@ function initializeUserRegistrationModal() {
     cpfInput?.addEventListener('input', (event) => {
         let digits = normalizeCpf(event.target.value);
         event.target.value = formatCpf(digits);
+    });
+    cpfInput?.addEventListener('blur', () => {
+        const cpf = normalizeCpf(cpfInput.value);
+        if (cpf && cpf.length < 11) {
+            window.showFmuNotice('CPF incompleto. Digite os 11 números do CPF do especialista.', 'CPF incompleto');
+        }
+    });
+    document.getElementById('userEmailInput')?.addEventListener('blur', () => {
+        const editId = document.getElementById('userEditId')?.value || '';
+        const cpf = normalizeCpf(cpfInput?.value || '');
+        const email = normalizeEmail(document.getElementById('userEmailInput')?.value || '');
+        if (!email) return;
+        const duplicated = findGlobalDuplicate({ cpf, email, excludeUserId: editId || getUserIdFromCpf(cpf) });
+        if (duplicated) window.showFmuNotice(duplicated, 'Cadastro duplicado');
     });
 
     addSpecialtyBtn?.addEventListener('click', () => {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fmu-cache-v20260530-18-usuarios-admin-logo';
+const CACHE_NAME = 'fmu-cache-v20260530-18-validacao-cadastros';
 const APP_SHELL = [
     './',
     './index.html',

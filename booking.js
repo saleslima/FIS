@@ -1025,6 +1025,11 @@ export function showSearchBookings() {
         }
     });
     
+    docInput.addEventListener('blur', () => {
+        const selectedType = document.querySelector('input[name="adminSearchType"]:checked').value;
+        validateIncompleteSearchDocument(docInput.value, selectedType, 'Pesquisar Agendamentos');
+    });
+
     modal.classList.add('active');
     docInput.value = '';
     document.getElementById('searchResults').innerHTML = '';
@@ -1075,7 +1080,8 @@ export function searchBookingsByCpf() {
     
     // Search through all bookings
     Object.entries(state.bookings || {}).forEach(([dateKey, bookings]) => {
-        bookings.forEach((booking, index) => {
+        const bookingList = Array.isArray(bookings) ? bookings : Object.values(bookings || {});
+        bookingList.forEach((booking, index) => {
             const matches = searchType === 'civil'
                 ? (booking.cpf && booking.cpf.replace(/\D/g, '') === searchDoc)
                 : (booking.re && booking.re.toUpperCase() === searchDoc.toUpperCase());
