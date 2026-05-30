@@ -98,6 +98,32 @@ export function canPatientBookInMonth(patient, targetDateKey) {
     return !buildMonthlyLimitExceededMessage(patient, targetDateKey);
 }
 
+function getDailyDuplicateBooking(patient, targetDateKey) {
+    const cleanDoc = getPatientCleanDoc(patient);
+    if (!patient || !cleanDoc || !targetDateKey) return null;
+
+    const bookings = state.bookings?.[targetDateKey] || [];
+    return bookings.find((booking) => {
+        if (!booking || booking.cancellation) return false;
+        if (booking.type !== patient.type) return false;
+        return getBookingCleanDoc(booking, patient.type) === cleanDoc;
+    }) || null;
+}
+
+function buildDailyDuplicateMessage(patient, targetDateKey) {
+    const duplicate = getDailyDuplicateBooking(patient, targetDateKey);
+    if (!duplicate) return '';
+
+    const period = getPeriodInfoForDateBooking(targetDateKey, duplicate);
+    const periodLabel = period ? `${period.name} (${period.start} - ${period.end})` : 'Período não localizado';
+    return `${patient.name || 'Paciente'} já possui uma consulta agendada para ${formatDateLabel(targetDateKey)}.
+
+Consulta existente: ${periodLabel}
+Queixa: ${duplicate.complaint || 'Não informada'}
+
+O sistema não permite mais de uma consulta para o mesmo paciente no mesmo dia.`;
+}
+
 export function openBookingModal(day, patient = null) {
     const modal = document.getElementById('bookingModal');
     const title = document.getElementById('modalTitle');
@@ -125,6 +151,12 @@ export function openBookingModal(day, patient = null) {
     if (!config) return;
 
     if (patient) {
+        const duplicateMessage = buildDailyDuplicateMessage(patient, dateKey);
+        if (duplicateMessage) {
+            window.showFmuNotice(duplicateMessage, 'Consulta já existente no dia');
+            return;
+        }
+
         const limitMessage = buildMonthlyLimitExceededMessage(patient, dateKey);
         if (limitMessage) {
             window.showFmuNotice(limitMessage, 'Limite mensal excedido');
@@ -253,6 +285,12 @@ function setupRegisteredPatientBookingHandlers(dateKey, periodIndex, day, patien
             bookingData.re = patientData.re;
             bookingData.rank = patientData.rank;
             bookingData.unit = patientData.unit;
+        }
+
+        const duplicateMessage = buildDailyDuplicateMessage(patientData, dateKey);
+        if (duplicateMessage) {
+            window.showFmuNotice(duplicateMessage, 'Consulta já existente no dia');
+            return;
         }
 
         const limitMessage = buildMonthlyLimitExceededMessage(patientData, dateKey);
@@ -463,6 +501,12 @@ function setupBookingFormHandlers(dateKey, periodIndex, day) {
             bookingData.unit = selectedUnit ? selectedUnit.value : null;
         }
 
+        const duplicateMessage = buildDailyDuplicateMessage(bookingData, dateKey);
+        if (duplicateMessage) {
+            window.showFmuNotice(duplicateMessage, 'Consulta já existente no dia');
+            return;
+        }
+
         const limitMessage = buildMonthlyLimitExceededMessage(bookingData, dateKey);
         if (limitMessage) {
             window.showFmuNotice(limitMessage, 'Limite mensal excedido');
@@ -561,6 +605,7 @@ export function showConfirmationModal(dateKey, periodIndex, bookingData, day) {
     
     modal.classList.add('active');
     updateEmailStatus('sending', `Enviando comprovante para ${bookingInfo.email}...`);
+    showEmailSendingOverlay(true);
     sendBookingConfirmationEmail(bookingInfo).then((result) => {
         if (result.ok) {
             updateEmailStatus('success', `Comprovante enviado automaticamente para ${bookingInfo.email}.`);
@@ -569,7 +614,30 @@ export function showConfirmationModal(dateKey, periodIndex, bookingData, day) {
 
         const reason = result.reason || 'Não foi possível enviar o e-mail automático.';
         updateEmailStatus(result.skipped ? 'warning' : 'error', reason);
+    }).catch((error) => {
+        console.error('Erro inesperado ao enviar comprovante:', error);
+        updateEmailStatus('error', 'Não foi possível enviar o e-mail automático.');
+    }).finally(() => {
+        showEmailSendingOverlay(false);
     });
+}
+
+function showEmailSendingOverlay(isVisible) {
+    const overlay = document.getElementById('emailSendingOverlay');
+    if (!overlay) return;
+
+    if (isVisible) {
+        overlay.hidden = false;
+        requestAnimationFrame(() => overlay.classList.add('active'));
+        return;
+    }
+
+    overlay.classList.remove('active');
+    window.setTimeout(() => {
+        if (!overlay.classList.contains('active')) {
+            overlay.hidden = true;
+        }
+    }, 240);
 }
 
 function updateEmailStatus(status, message) {

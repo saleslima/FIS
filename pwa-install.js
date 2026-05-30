@@ -1,8 +1,10 @@
 (() => {
     const PROMPT_DURATION_MS = 5000;
+    const INSTALL_NOTICE_KEY = 'fmuPwaInstallNoticeShown';
     const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
     let deferredPrompt = null;
     let hideTimer = null;
+    let installNoticeShownInPage = false;
 
     function getElements() {
         return {
@@ -31,6 +33,18 @@
         hideTimer = window.setTimeout(hideInstallArrow, PROMPT_DURATION_MS);
     }
 
+    function showInstallSuccessOnce() {
+        if (installNoticeShownInPage) return;
+        installNoticeShownInPage = true;
+
+        if (localStorage.getItem(INSTALL_NOTICE_KEY) === 'true') return;
+        localStorage.setItem(INSTALL_NOTICE_KEY, 'true');
+
+        if (window.showFmuNotice) {
+            window.showFmuNotice('FMU instalado com sucesso. O ícone foi adicionado à tela inicial quando o navegador permitiu a instalação como aplicativo.', 'Instalação concluída');
+        }
+    }
+
     async function registerServiceWorker() {
         if (!('serviceWorker' in navigator)) return;
         try {
@@ -43,15 +57,15 @@
     window.addEventListener('beforeinstallprompt', (event) => {
         event.preventDefault();
         deferredPrompt = event;
+        localStorage.removeItem(INSTALL_NOTICE_KEY);
+        installNoticeShownInPage = false;
         showInstallArrow();
     });
 
     window.addEventListener('appinstalled', () => {
         deferredPrompt = null;
         hideInstallArrow();
-        if (window.showFmuNotice) {
-            window.showFmuNotice('FMU instalado com sucesso. O ícone foi adicionado à tela inicial quando o navegador permitiu a instalação como aplicativo.', 'Instalação concluída');
-        }
+        showInstallSuccessOnce();
     });
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -77,9 +91,14 @@
                 }
 
                 deferredPrompt.prompt();
-                await deferredPrompt.userChoice;
+                const choiceResult = await deferredPrompt.userChoice;
+                const accepted = choiceResult && choiceResult.outcome === 'accepted';
                 deferredPrompt = null;
                 hideInstallArrow();
+
+                if (accepted) {
+                    window.setTimeout(() => showInstallSuccessOnce(), 600);
+                }
             });
         }
 

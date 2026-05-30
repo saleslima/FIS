@@ -110,7 +110,7 @@ function formatCpf(value) {
 }
 
 function formatRe(value) {
-    const raw = String(value || '').replace(/-/g, '').toUpperCase();
+    const raw = normalizeReValue(value);
     return raw.length > 6 ? `${raw.slice(0, 6)}-${raw.slice(6, 7)}` : raw;
 }
 
@@ -137,7 +137,7 @@ function getUnitLabel(unit) {
 }
 
 function normalizeAdminPatientSearch(value) {
-    return String(value || '').replace(/\D/g, '').slice(0, 11);
+    return normalizeCpfReRaw(value);
 }
 
 function findAdminPatientMatches(query) {
@@ -147,8 +147,10 @@ function findAdminPatientMatches(query) {
     const patients = Object.entries(state.registeredPatients || {});
     return patients.filter(([id, patient]) => {
         const doc = getPatientDocInfo(patient);
+        const rawDoc = normalizeCpfReRaw(doc.raw);
         const rawDocDigits = String(doc.raw || '').replace(/\D/g, '');
-        return rawDocDigits.includes(normalized);
+        const normalizedDigits = normalized.replace(/\D/g, '');
+        return rawDoc.includes(normalized) || (normalizedDigits && rawDocDigits.includes(normalizedDigits));
     });
 }
 
@@ -859,17 +861,16 @@ function initializeBookingPasswordModal() {
             verificationModal.dataset.day = day;
             
             // Reset verification form
-            document.getElementById('verifyDoc').value = '';
-            const verifyCivilRadio = document.querySelector('input[name="verifyPatientType"][value="civil"]');
-            if (verifyCivilRadio) verifyCivilRadio.checked = true;
-            document.getElementById('verifyDocLabel').textContent = 'Digite seu CPF:';
-            document.getElementById('verifyDoc').placeholder = '000.000.000-00';
-            document.getElementById('verifyDoc').maxLength = 14;
+            const verifyDocInput = document.getElementById('verifyDoc');
+            verifyDocInput.value = '';
+            document.getElementById('verifyDocLabel').textContent = 'CPF ou RE:';
+            verifyDocInput.placeholder = 'Digite CPF ou RE';
+            verifyDocInput.maxLength = 14;
+            verifyDocInput.dataset.detectedType = '';
             document.getElementById('verifyPatientBtn').disabled = true;
-            if (verifyCivilRadio) verifyCivilRadio.dispatchEvent(new Event('change', { bubbles: true }));
             
             verificationModal.classList.add('active');
-            document.getElementById('verifyDoc').focus();
+            verifyDocInput.focus();
         } else {
             window.showFmuNotice('Senha incorreta!', 'Acesso negado');
             passwordInput.value = '';
@@ -1344,94 +1345,60 @@ function initializePatientVerificationModal() {
     const docInput = document.getElementById('verifyDoc');
     const docLabel = document.getElementById('verifyDocLabel');
     const verifyBtn = document.getElementById('verifyPatientBtn');
-    const patientTypeRadios = document.querySelectorAll('input[name="verifyPatientType"]');
 
-    let currentType = 'civil';
-
-    const updateDocField = () => {
-        const selectedType = document.querySelector('input[name="verifyPatientType"]:checked').value;
-        const typeChanged = currentType !== selectedType;
-        currentType = selectedType;
-        
-        if (selectedType === 'civil') {
-            docLabel.textContent = 'Digite seu CPF:';
-            docInput.placeholder = '000.000.000-00';
-            docInput.maxLength = 14;
-        } else {
-            docLabel.textContent = 'Digite seu RE (Registro):';
-            docInput.placeholder = '000000-0';
-            docInput.maxLength = 8;
-        }
-        if (typeChanged) docInput.value = '';
+    const resetVerificationForm = () => {
+        docInput.value = '';
+        docInput.dataset.detectedType = '';
+        docLabel.textContent = 'CPF ou RE:';
+        docInput.placeholder = 'Digite CPF ou RE';
+        docInput.maxLength = 14;
         verifyBtn.disabled = true;
     };
 
-    patientTypeRadios.forEach(radio => {
-        radio.addEventListener('change', updateDocField);
-        radio.addEventListener('input', updateDocField);
-        radio.addEventListener('click', updateDocField);
-    });
-    
     closeBtn.addEventListener('click', () => {
         modal.classList.remove('active');
+        resetVerificationForm();
     });
     
     modal.addEventListener('click', (e) => {
         if (e.target === modal) {
             modal.classList.remove('active');
+            resetVerificationForm();
         }
     });
     
-    // Format document as user types
     docInput.addEventListener('input', (e) => {
-        if (currentType === 'civil') {
-            let v = e.target.value.replace(/\D/g, '');
-            if (v.length > 11) v = v.slice(0, 11);
-            if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-            else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{1,3})/, '$1.$2.$3');
-            else if (v.length > 3) v = v.replace(/(\d{3})(\d{1,3})/, '$1.$2');
-            e.target.value = v;
-            
-            const cleanCpf = v.replace(/\D/g, '');
-            verifyBtn.disabled = cleanCpf.length !== 11;
+        e.target.value = formatCpfOrReInput(e.target.value);
+        const detected = detectCpfOrReFromDigits(e.target.value);
+        e.target.dataset.detectedType = detected.type;
+
+        if (detected.type === 'civil') {
+            docLabel.textContent = 'CPF identificado:';
+        } else if (detected.type === 'militar') {
+            docLabel.textContent = 'RE identificado:';
         } else {
-            let raw = e.target.value.replace(/-/g, '').toUpperCase();
-            if (raw.length > 7) raw = raw.slice(0, 7);
-            
-            let formatted = raw;
-            if (raw.length > 6) {
-                const digits = raw.slice(0, 6).replace(/\D/g, '');
-                const lastChar = raw.slice(6, 7);
-                formatted = digits + '-' + lastChar;
-            } else {
-                formatted = raw.replace(/\D/g, '');
-            }
-            e.target.value = formatted;
-            
-            verifyBtn.disabled = raw.length !== 7;
+            docLabel.textContent = 'CPF ou RE:';
         }
+
+        verifyBtn.disabled = !['civil', 'militar'].includes(detected.type);
     });
     
     docInput.addEventListener('blur', () => {
-        validateIncompleteDocument(docInput.value, currentType, 'Verificação de Cadastro');
+        validateDetectedCpfOrRe(docInput.value, 'Verificação de Cadastro');
     });
+
     verifyBtn.addEventListener('click', () => {
-        if (!validateIncompleteDocument(docInput.value, currentType, 'Verificação de Cadastro')) return;
-        const doc = currentType === 'civil' 
-            ? docInput.value.replace(/\D/g, '')
-            : docInput.value.replace(/-/g, '');
-        
-        const patientId = currentType === 'civil' ? `civil_${doc}` : `militar_${doc}`;
-        const patient = state.registeredPatients && state.registeredPatients[patientId];
-        
+        if (!validateDetectedCpfOrRe(docInput.value, 'Verificação de Cadastro')) return;
+
+        const patient = findRegisteredPatientByCpfOrRe(docInput.value);
         if (!patient) {
             window.showFmuNotice('Paciente não cadastrado. Entre em contato com a entidade antes do agendamento.', 'Cadastro não encontrado');
             return;
         }
         
-        // Patient is registered, proceed to booking
         const day = parseInt(modal.dataset.day);
         modal.classList.remove('active');
+        resetVerificationForm();
         window.dispatchEvent(new CustomEvent('openBookingModal', { 
             detail: { day, patient } 
         }));
@@ -1948,8 +1915,36 @@ function normalizeEmail(value) {
     return String(value || '').trim().toLowerCase();
 }
 
+function getCpfReInputParts(value) {
+    const raw = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const cpfMode = raw.length > 7;
+    if (cpfMode) {
+        const digits = raw.replace(/\D/g, '').slice(0, 11);
+        return { raw, cpfMode, value: digits, digits };
+    }
+    const firstSix = raw.slice(0, 6).replace(/\D/g, '');
+    const seventh = raw.length > 6 ? raw.slice(6, 7).replace(/[^A-Z0-9]/g, '') : '';
+    const re = (firstSix + seventh).slice(0, 7);
+    return { raw, cpfMode, value: re, digits: re.replace(/\D/g, '') };
+}
+
+function normalizeCpfReRaw(value) {
+    return getCpfReInputParts(value).value;
+}
+
 function normalizeReValue(value) {
-    return String(value || '').replace(/-/g, '').trim().toUpperCase().slice(0, 7);
+    const raw = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const firstSix = raw.slice(0, 6).replace(/\D/g, '');
+    const seventh = raw.length > 6 ? raw.slice(6, 7).replace(/[^A-Z0-9]/g, '') : '';
+    return (firstSix + seventh).slice(0, 7);
+}
+
+function formatCpfPartial(digits) {
+    const clean = String(digits || '').replace(/\D/g, '').slice(0, 11);
+    if (clean.length > 9) return clean.replace(/(\d{3})(\d{3})(\d{3})(\d{0,2})/, '$1.$2.$3-$4');
+    if (clean.length > 6) return clean.replace(/(\d{3})(\d{3})(\d{1,3})/, '$1.$2.$3');
+    if (clean.length > 3) return clean.replace(/(\d{3})(\d{1,3})/, '$1.$2');
+    return clean;
 }
 
 function validateIncompleteDocument(value, type, title = 'Documento incompleto') {
@@ -1960,7 +1955,65 @@ function validateIncompleteDocument(value, type, title = 'Documento incompleto')
         return false;
     }
     if (type === 'militar' && clean.length < 7) {
-        window.showFmuNotice('RE incompleto. Digite 6 números e o dígito final para continuar.', title);
+        window.showFmuNotice('RE incompleto. Digite 6 números e o dígito final, que pode ser letra ou número.', title);
+        return false;
+    }
+    return true;
+}
+
+function detectCpfOrReFromDigits(value) {
+    const parts = getCpfReInputParts(value);
+    const clean = parts.value;
+    if (parts.cpfMode) {
+        if (/^\d{11}$/.test(clean)) return { type: 'civil', value: clean, digits: clean };
+        return { type: '', value: clean, digits: clean };
+    }
+    if (/^\d{6}[A-Z0-9]$/.test(clean)) return { type: 'militar', value: clean, digits: clean.replace(/\D/g, '') };
+    return { type: '', value: clean, digits: clean.replace(/\D/g, '') };
+}
+
+function formatCpfOrReInput(value) {
+    const parts = getCpfReInputParts(value);
+    const clean = parts.value;
+    if (parts.cpfMode) return formatCpfPartial(clean);
+    if (/^\d{6}[A-Z0-9]$/.test(clean)) return `${clean.slice(0, 6)}-${clean.slice(6, 7)}`;
+    return clean;
+}
+
+function findRegisteredPatientByCpfOrRe(docValue) {
+    const parts = getCpfReInputParts(docValue);
+    const clean = parts.value;
+    if (parts.cpfMode && !/^\d{11}$/.test(clean)) return null;
+    if (!parts.cpfMode && !/^\d{6}[A-Z0-9]$/.test(clean)) return null;
+
+    return Object.values(state.registeredPatients || {}).find((patient) => {
+        const cpf = normalizeCpf(patient.cpf);
+        const re = normalizeReValue(patient.re);
+        return cpf === clean || re === clean;
+    }) || null;
+}
+
+function validateDetectedCpfOrRe(value, title = 'Verificação de Cadastro') {
+    const parts = getCpfReInputParts(value);
+    const clean = parts.value;
+    if (!clean) return true;
+    if (parts.cpfMode) {
+        if (clean.length < 11) {
+            window.showFmuNotice('CPF incompleto. Como passou de 7 caracteres, o sistema considera CPF. Digite os 11 números do CPF.', title);
+            return false;
+        }
+        if (!/^\d{11}$/.test(clean)) {
+            window.showFmuNotice('CPF inválido. CPF deve conter apenas números.', title);
+            return false;
+        }
+        return true;
+    }
+    if (clean.length < 7) {
+        window.showFmuNotice('RE incompleto. Digite 6 números e o 7º caractere, que pode ser letra ou número.', title);
+        return false;
+    }
+    if (!/^\d{6}[A-Z0-9]$/.test(clean)) {
+        window.showFmuNotice('RE inválido. Os 6 primeiros caracteres devem ser números e o 7º pode ser letra ou número.', title);
         return false;
     }
     return true;
