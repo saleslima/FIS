@@ -2893,3 +2893,72 @@ header .toggle-mode {
     justify-content: flex-start !important;
     align-items: center !important;
 }
+
+
+/* Ajuste solicitado: Visualizar Ocupação no painel admin e logos 10% menores */
+.logo-fiber-orbit > .logo,
+.logo-fiber-orbit img.logo,
+.logo-fiber-orbit .logo-primary,
+.logo-fiber-orbit .logo-secondary,
+header .logo {
+    height: 144px !important;
+    width: auto !important;
+    max-width: none !important;
+    object-fit: contain !important;
+}
+
+.logo-startup-clone .logo,
+.logo-startup-clone img.logo,
+.logo-startup-clone .logo-primary,
+.logo-startup-clone .logo-secondary {
+    height: 144px !important;
+    width: auto !important;
+    max-width: none !important;
+    object-fit: contain !important;
+}
+
+@media (max-width: 768px) {
+    .logo-fiber-orbit {
+        --logo-orbit-radius: 83px !important;
+        min-width: 167px !important;
+        min-height: 167px !important;
+    }
+
+    .logo-fiber-orbit > .logo,
+    .logo-fiber-orbit img.logo,
+    .logo-fiber-orbit .logo-primary,
+    .logo-fiber-orbit .logo-secondary,
+    header .logo {
+        height: 126px !important;
+    }
+
+    .logo-startup-clone .logo,
+    .logo-startup-clone img.logo,
+    .logo-startup-clone .logo-primary,
+    .logo-startup-clone .logo-secondary {
+        height: 126px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .logo-fiber-orbit {
+        --logo-orbit-radius: 74px !important;
+        min-width: 151px !important;
+        min-height: 151px !important;
+    }
+
+    .logo-fiber-orbit > .logo,
+    .logo-fiber-orbit img.logo,
+    .logo-fiber-orbit .logo-primary,
+    .logo-fiber-orbit .logo-secondary,
+    header .logo {
+        height: 113px !important;
+    }
+
+    .logo-startup-clone .logo,
+    .logo-startup-clone img.logo,
+    .logo-startup-clone .logo-primary,
+    .logo-startup-clone .logo-secondary {
+        height: 113px !important;
+    }
+}
