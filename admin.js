@@ -181,7 +181,7 @@ function saveConfiguration() {
 async function resetMonth() {
     const password = await window.showFmuPasswordPrompt('Digite a senha de administrador para resetar o mês:', 'Resetar mês');
     if (password === null) return;
-    if (password !== 'daqta') {
+    if (password !== 'ndit@123') {
         window.showFmuNotice('Senha incorreta!', 'Acesso negado');
         return;
     }
@@ -634,18 +634,17 @@ function showPatientRegistrationModal() {
     document.getElementById('regEmail').value = '';
     document.getElementById('regPhone').value = '';
     document.getElementById('regRank').value = '';
-    const civilTypeRadio = document.querySelector('input[name="regPatientType"][value="civil"]');
-    if (civilTypeRadio) civilTypeRadio.checked = true;
     const regDocLabel = document.getElementById('regDocLabel');
     const regDocInput = document.getElementById('regDoc');
-    if (regDocLabel) regDocLabel.textContent = 'CPF:';
+    if (regDocLabel) regDocLabel.textContent = 'CPF ou RE:';
     if (regDocInput) {
-        regDocInput.placeholder = '000.000.000-00';
+        regDocInput.placeholder = 'Digite CPF ou RE';
         regDocInput.maxLength = 14;
+        regDocInput.inputMode = 'text';
+        regDocInput.dispatchEvent(new Event('input', { bubbles: true }));
     }
     document.getElementById('regRankField').style.display = 'none';
     document.getElementById('regMilitaryUnitField').style.display = 'none';
-    if (civilTypeRadio) civilTypeRadio.dispatchEvent(new Event('change', { bubbles: true }));
     document.querySelectorAll('input[name="regMilitaryUnit"]').forEach(r => r.checked = false);
     
     renderRegisteredPatientsList();

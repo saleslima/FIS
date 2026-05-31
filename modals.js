@@ -6,6 +6,11 @@ import { sendUserTemporaryPasswordEmail } from './emailjs-service.js';
 
 export function renderRegisteredPatientsList() {
     const listDiv = document.getElementById('registeredPatientsList');
+    if (!listDiv) return;
+    if (listDiv.style && listDiv.style.display === 'none') {
+        listDiv.innerHTML = '';
+        return;
+    }
 
     if (!state.registeredPatients || Object.keys(state.registeredPatients).length === 0) {
         listDiv.innerHTML = '<p style="color: var(--text-secondary); font-style: italic;">Nenhum paciente cadastrado.</p>';
@@ -49,25 +54,52 @@ export function renderRegisteredPatientsList() {
     listDiv.innerHTML = html;
 }
 
+function removeBookingsForPatient(patient) {
+    if (!patient || !state.bookings) return 0;
+    const docInfo = getPatientDocInfo(patient);
+    const targetDoc = normalizeCpfReRaw(docInfo.raw);
+    let removed = 0;
+
+    Object.keys(state.bookings || {}).forEach((dateKey) => {
+        const bookings = state.bookings[dateKey] || [];
+        const kept = bookings.filter((booking) => {
+            const bookingDoc = patient.type === 'civil'
+                ? normalizeCpf(booking.cpf)
+                : normalizeReValue(booking.re);
+            const shouldRemove = bookingDoc === targetDoc;
+            if (shouldRemove) removed += 1;
+            return !shouldRemove;
+        });
+
+        if (kept.length) {
+            state.bookings[dateKey] = kept;
+        } else {
+            delete state.bookings[dateKey];
+        }
+    });
+
+    return removed;
+}
+
 window.deletePatient = async function(patientId) {
-    const confirmed = await window.showFmuConfirm('Tem certeza que deseja excluir este paciente?', 'Excluir paciente', 'Excluir', 'Cancelar');
+    const patient = state.registeredPatients?.[patientId];
+    if (!patient) return;
+
+    const confirmed = await window.showFmuConfirm('Tem certeza que deseja excluir este paciente? O histórico de consultas dele também será excluído.', 'Excluir paciente', 'Excluir', 'Cancelar');
     if (confirmed) {
+        const removedBookings = removeBookingsForPatient(patient);
         delete state.registeredPatients[patientId];
         saveState();
         renderRegisteredPatientsList();
         clearAdminPatientRecordArea();
+        renderCalendar();
+        window.showFmuNotice(removedBookings ? 'Paciente excluído e histórico de consultas removido.' : 'Paciente excluído com sucesso.', 'Exclusão concluída');
     }
 };
 
 window.editPatient = function(patientId) {
     const patient = state.registeredPatients?.[patientId];
     if (!patient) return;
-
-    const typeRadio = document.querySelector(`input[name="regPatientType"][value="${patient.type}"]`);
-    if (typeRadio) {
-        typeRadio.checked = true;
-        typeRadio.dispatchEvent(new Event('change', { bubbles: true }));
-    }
 
     const docInput = document.getElementById('regDoc');
     const nameInput = document.getElementById('regName');
@@ -292,6 +324,7 @@ function showAdminPatientDetails(patientId) {
                 </select>
                 <input type="number" id="patientRecordCustomLimit" min="1" max="${Math.max(totalBookings, 1)}" placeholder="Qtd." style="display:none; width: 110px;" />
                 <button type="button" class="btn-secondary" onclick="window.editPatient('${patientId}')">Editar Cadastro</button>
+                <button type="button" class="btn-danger" onclick="window.deletePatient('${patientId}')">Excluir Cadastro</button>
                 <button type="button" class="btn-primary" onclick="window.showPatientProntuario('${patientId}')">Prontuário</button>
                 <span style="color: var(--text-secondary); font-size: 13px;">Ainda não carregado</span>
             </div>
@@ -537,7 +570,7 @@ function initializeCancellationModal() {
         const reason = reasonInput.value.trim();
         const requestedBy = requestedByInput.value.trim();
 
-        confirmBtn.disabled = !(password === 'daqta' && reason.length >= 10 && requestedBy.length > 0);
+        confirmBtn.disabled = !(password === 'ndit@123' && reason.length >= 10 && requestedBy.length > 0);
     };
 
     passwordInput.addEventListener('input', validateForm);
@@ -1417,17 +1450,50 @@ function initializePatientRegistrationModal() {
     const cancelBtn = document.getElementById('cancelPatientRegistration');
     const saveBtn = document.getElementById('savePatientRegistration');
     const docInput = document.getElementById('regDoc');
+    const docLabel = document.getElementById('regDocLabel');
     const nameInput = document.getElementById('regName');
     const emailInput = document.getElementById('regEmail');
     const phoneInput = document.getElementById('regPhone');
     const rankInput = document.getElementById('regRank');
-    const patientTypeRadios = document.querySelectorAll('input[name="regPatientType"]');
     const rankField = document.getElementById('regRankField');
     const unitField = document.getElementById('regMilitaryUnitField');
     const adminSearchInput = document.getElementById('adminPatientSearchInput');
     const adminSearchBtn = document.getElementById('adminPatientSearchBtn');
-    
-    let currentType = 'civil';
+
+    let currentType = '';
+
+    const getRegistrationType = () => {
+        const parts = getCpfReInputParts(docInput.value);
+        if (!parts.value) return '';
+        return parts.cpfMode ? 'civil' : 'militar';
+    };
+
+    const applyDetectedRegistrationType = () => {
+        const parts = getCpfReInputParts(docInput.value);
+        currentType = getRegistrationType();
+
+        if (!parts.value) {
+            docLabel.textContent = 'CPF ou RE:';
+            docInput.placeholder = 'Digite CPF ou RE';
+            docInput.maxLength = 14;
+            rankField.style.display = 'none';
+            unitField.style.display = 'none';
+        } else if (currentType === 'civil') {
+            docLabel.textContent = 'CPF identificado:';
+            docInput.placeholder = '000.000.000-00';
+            docInput.maxLength = 14;
+            rankField.style.display = 'none';
+            unitField.style.display = 'none';
+            rankInput.value = '';
+            document.querySelectorAll('input[name="regMilitaryUnit"]').forEach(r => r.checked = false);
+        } else {
+            docLabel.textContent = 'RE identificado:';
+            docInput.placeholder = '000000-0';
+            docInput.maxLength = 8;
+            rankField.style.display = 'block';
+            unitField.style.display = 'block';
+        }
+    };
 
     const runAdminPatientSearch = () => {
         const matches = findAdminPatientMatches(adminSearchInput.value);
@@ -1437,7 +1503,7 @@ function initializePatientRegistrationModal() {
     if (adminSearchBtn && adminSearchInput) {
         adminSearchBtn.addEventListener('click', runAdminPatientSearch);
         adminSearchInput.addEventListener('input', () => {
-            adminSearchInput.value = normalizeAdminPatientSearch(adminSearchInput.value);
+            adminSearchInput.value = formatCpfOrReInput(adminSearchInput.value);
             const normalized = normalizeAdminPatientSearch(adminSearchInput.value);
             if (normalized.length >= 3) {
                 runAdminPatientSearch();
@@ -1455,87 +1521,39 @@ function initializePatientRegistrationModal() {
             }
         });
     }
-    
+
     const validateForm = () => {
-        let docValid = false;
-        if (currentType === 'civil') {
-            const cpf = docInput.value.replace(/\D/g, '');
-            docValid = cpf.length === 11;
-        } else {
-            const re = docInput.value.replace(/-/g, '');
-            docValid = re.length === 7;
-        }
-        
+        applyDetectedRegistrationType();
+        const parts = getCpfReInputParts(docInput.value);
+        const docValid = currentType === 'civil'
+            ? /^\d{11}$/.test(parts.value)
+            : currentType === 'militar' && /^\d{6}[A-Z0-9]$/.test(parts.value);
+
         const name = nameInput.value.trim();
         const email = emailInput.value.trim();
         const phone = phoneInput.value.trim();
-        
-        let rankValid = currentType === 'civil' || rankInput.value !== '';
-        let unitValid = currentType === 'civil' || document.querySelector('input[name="regMilitaryUnit"]:checked') !== null;
-        
+        const rankValid = currentType !== 'militar' || rankInput.value !== '';
+        const unitValid = currentType !== 'militar' || document.querySelector('input[name="regMilitaryUnit"]:checked') !== null;
+
         saveBtn.disabled = !(docValid && name && email.includes('@') && phone.length === 11 && rankValid && unitValid);
     };
-    
-    const updateDocField = () => {
-        const selectedType = document.querySelector('input[name="regPatientType"]:checked').value;
-        const typeChanged = currentType !== selectedType;
-        currentType = selectedType;
-        
-        if (currentType === 'civil') {
-            document.getElementById('regDocLabel').textContent = 'CPF:';
-            docInput.placeholder = '000.000.000-00';
-            docInput.maxLength = 14;
-            rankField.style.display = 'none';
-            unitField.style.display = 'none';
-        } else {
-            document.getElementById('regDocLabel').textContent = 'RE (Registro):';
-            docInput.placeholder = '000000-0';
-            docInput.maxLength = 8;
-            rankField.style.display = 'block';
-            unitField.style.display = 'block';
-        }
-        if (typeChanged) docInput.value = '';
-        validateForm();
-    };
-    
-    patientTypeRadios.forEach(radio => {
-        radio.addEventListener('change', updateDocField);
-        radio.addEventListener('input', updateDocField);
-        radio.addEventListener('click', updateDocField);
-    });
-    
+
     docInput.addEventListener('input', (e) => {
-        if (currentType === 'civil') {
-            let v = e.target.value.replace(/\D/g, '');
-            if (v.length > 11) v = v.slice(0, 11);
-            if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-            else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{1,3})/, '$1.$2.$3');
-            else if (v.length > 3) v = v.replace(/(\d{3})(\d{1,3})/, '$1.$2');
-            e.target.value = v;
-        } else {
-            let raw = e.target.value.replace(/-/g, '').toUpperCase();
-            if (raw.length > 7) raw = raw.slice(0, 7);
-            let formatted = raw;
-            if (raw.length > 6) {
-                const digits = raw.slice(0, 6).replace(/\D/g, '');
-                const lastChar = raw.slice(6, 7);
-                formatted = digits + '-' + lastChar;
-            } else {
-                formatted = raw.replace(/\D/g, '');
-            }
-            e.target.value = formatted;
-        }
+        e.target.value = formatCpfOrReInput(e.target.value);
         validateForm();
     });
-    
+
     docInput.addEventListener('blur', () => {
-        validateIncompleteDocument(docInput.value, currentType, 'Cadastro de Paciente');
+        const detectedType = getRegistrationType();
+        if (detectedType) validateIncompleteDocument(docInput.value, detectedType, 'Cadastro de Paciente');
     });
+
     emailInput.addEventListener('blur', () => {
         const email = normalizeEmail(emailInput.value);
         if (!email) return;
-        const doc = currentType === 'civil' ? normalizeCpf(docInput.value) : normalizeReValue(docInput.value);
-        const patientId = currentType === 'civil' ? `civil_${doc}` : `militar_${doc}`;
+        const detectedType = getRegistrationType();
+        const parts = getCpfReInputParts(docInput.value);
+        const patientId = detectedType === 'civil' ? `civil_${parts.value}` : detectedType === 'militar' ? `militar_${parts.value}` : '';
         const duplicated = findGlobalDuplicate({ email, excludePatientId: patientId });
         if (duplicated) window.showFmuNotice(duplicated, 'Cadastro duplicado');
     });
@@ -1544,32 +1562,35 @@ function initializePatientRegistrationModal() {
         nameInput.value = nameInput.value.toUpperCase();
         validateForm();
     });
-    
+
     emailInput.addEventListener('input', validateForm);
-    
+
     phoneInput.addEventListener('input', (e) => {
-        e.target.value = e.target.value.replace(/\D/g, '');
+        e.target.value = e.target.value.replace(/\D/g, '').slice(0, 11);
         validateForm();
     });
-    
+
     rankInput.addEventListener('change', validateForm);
     document.querySelectorAll('input[name="regMilitaryUnit"]').forEach(r => {
         r.addEventListener('change', validateForm);
     });
-    
+
     saveBtn.addEventListener('click', () => {
-        const doc = currentType === 'civil' 
-            ? docInput.value.replace(/\D/g, '')
-            : docInput.value.replace(/-/g, '');
-        
-        const patientId = currentType === 'civil' ? `civil_${doc}` : `militar_${doc}`;
-        
-        if (!validateIncompleteDocument(docInput.value, currentType, 'Cadastro de Paciente')) return;
-        
-        if (!state.registeredPatients) {
-            state.registeredPatients = {};
+        const detectedType = getRegistrationType();
+        if (!detectedType) {
+            window.showFmuNotice('Digite um CPF ou RE válido para continuar.', 'Documento obrigatório');
+            return;
         }
-        
+
+        const parts = getCpfReInputParts(docInput.value);
+        currentType = detectedType;
+        const doc = parts.value;
+        const patientId = currentType === 'civil' ? `civil_${doc}` : `militar_${doc}`;
+
+        if (!validateIncompleteDocument(docInput.value, currentType, 'Cadastro de Paciente')) return;
+
+        if (!state.registeredPatients) state.registeredPatients = {};
+
         const duplicateMessage = findGlobalDuplicate({
             cpf: currentType === 'civil' ? doc : '',
             re: currentType === 'militar' ? doc : '',
@@ -1580,7 +1601,7 @@ function initializePatientRegistrationModal() {
             window.showFmuNotice(duplicateMessage + ' O sistema não aceita CPF, RE ou email repetidos, mesmo em funções diferentes.', 'Cadastro duplicado');
             return;
         }
-        
+
         const previousPatient = state.registeredPatients[patientId];
         const patientData = {
             type: currentType,
@@ -1590,7 +1611,7 @@ function initializePatientRegistrationModal() {
             createdAt: previousPatient?.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
-        
+
         if (currentType === 'civil') {
             patientData.cpf = doc;
         } else {
@@ -1599,40 +1620,42 @@ function initializePatientRegistrationModal() {
             const selectedUnit = document.querySelector('input[name="regMilitaryUnit"]:checked');
             patientData.unit = selectedUnit ? selectedUnit.value : null;
         }
-        
+
         state.registeredPatients[patientId] = patientData;
         saveState();
-        
+
         window.showFmuNotice(previousPatient ? 'Paciente atualizado com sucesso!' : 'Paciente cadastrado com sucesso!', 'Sucesso');
-        
-        // Reset form
+
         docInput.value = '';
         nameInput.value = '';
         emailInput.value = '';
         phoneInput.value = '';
         rankInput.value = '';
         document.querySelectorAll('input[name="regMilitaryUnit"]').forEach(r => r.checked = false);
-        
+        applyDetectedRegistrationType();
         renderRegisteredPatientsList();
         validateForm();
     });
-    
+
     cancelBtn.addEventListener('click', () => {
         modal.classList.remove('active');
         clearAdminPatientRecordArea();
     });
-    
+
     closeBtn.addEventListener('click', () => {
         modal.classList.remove('active');
         clearAdminPatientRecordArea();
     });
-    
+
     modal.addEventListener('click', (e) => {
         if (e.target === modal) {
             modal.classList.remove('active');
             clearAdminPatientRecordArea();
         }
     });
+
+    applyDetectedRegistrationType();
+    validateForm();
 }
 
 function initializePatientSearchModal() {
