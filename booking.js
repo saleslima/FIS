@@ -259,6 +259,7 @@ function setupRegisteredPatientBookingHandlers(dateKey, periodIndex, day, patien
     const validateForm = () => {
         const complaint = complaintInput.value.trim();
         confirmBtn.disabled = !(complaint.length >= 10 && complaint.length <= 100);
+        confirmBtn.classList.toggle('booking-confirm-ready', !confirmBtn.disabled);
     };
 
     complaintInput.addEventListener('input', () => {
@@ -391,6 +392,7 @@ function setupBookingFormHandlers(dateKey, periodIndex, day) {
         }
         
         confirmBtn.disabled = !(nameInput.value.trim().length > 0 && docValid && emailValid && ph.length === 11 && complaintValid && rankValid && unitValid);
+        confirmBtn.classList.toggle('booking-confirm-ready', !confirmBtn.disabled);
     };
 
     const updateDocField = () => {
@@ -474,6 +476,7 @@ function setupBookingFormHandlers(dateKey, periodIndex, day) {
     document.querySelectorAll('input[name="militaryUnit"]').forEach(r => r.addEventListener('change', validateForm));
 
     confirmBtn.disabled = true;
+    confirmBtn.classList.remove('booking-confirm-ready');
     validateForm();
 
     confirmBtn.addEventListener('click', () => {

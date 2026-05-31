@@ -109,6 +109,7 @@ window.editPatient = function(patientId) {
 
     if (docInput) {
         docInput.value = patient.type === 'civil' ? formatCpf(patient.cpf) : formatRe(patient.re);
+        docInput.dataset.updatePatientId = patientId;
         docInput.dispatchEvent(new Event('input', { bubbles: true }));
     }
     if (nameInput) nameInput.value = patient.name || '';
@@ -1544,19 +1545,51 @@ function initializePatientRegistrationModal() {
         validateForm();
     });
 
-    docInput.addEventListener('blur', () => {
+    docInput.addEventListener('blur', async () => {
         const detectedType = getRegistrationType();
-        if (detectedType) validateIncompleteDocument(docInput.value, detectedType, 'Cadastro de Paciente');
+        if (!detectedType) return;
+        if (!validateIncompleteDocument(docInput.value, detectedType, 'Cadastro de Paciente')) return;
+
+        const parts = getCpfReInputParts(docInput.value);
+        const doc = parts.value;
+        const duplicate = localizarPacienteDuplicado({
+            cpf: detectedType === 'civil' ? doc : '',
+            re: detectedType === 'militar' ? doc : '',
+            excludeId: docInput.dataset.updatePatientId || ''
+        });
+
+        if (duplicate) {
+            const atualizar = await window.showFmuConfirm(formatPatientDetailsForConfirm(duplicate.patient), 'Cadastro já existente', 'Atualizar existente', 'Cancelar');
+            if (atualizar) {
+                window.editPatient(duplicate.id);
+                window.showFmuNotice('Dados carregados para atualização. Confira as informações e clique em Salvar Cadastro.', 'Atualização de cadastro');
+            } else {
+                docInput.value = '';
+                docInput.dataset.updatePatientId = '';
+                validateForm();
+            }
+            return;
+        }
+
+        docInput.dataset.updatePatientId = detectedType === 'civil' ? 'civil_' + doc : 'militar_' + doc;
     });
 
-    emailInput.addEventListener('blur', () => {
+    emailInput.addEventListener('blur', async () => {
         const email = normalizeEmail(emailInput.value);
         if (!email) return;
         const detectedType = getRegistrationType();
         const parts = getCpfReInputParts(docInput.value);
         const patientId = detectedType === 'civil' ? `civil_${parts.value}` : detectedType === 'militar' ? `militar_${parts.value}` : '';
-        const duplicated = findGlobalDuplicate({ email, excludePatientId: patientId });
-        if (duplicated) window.showFmuNotice(duplicated, 'Cadastro duplicado');
+        const duplicated = findGlobalDuplicate({ email, excludePatientId: docInput.dataset.updatePatientId || patientId });
+        if (duplicated) {
+            const duplicatePatient = localizarPacienteDuplicado({ email, excludeId: patientId });
+            if (duplicatePatient) {
+                const atualizar = await window.showFmuConfirm(formatPatientDetailsForConfirm(duplicatePatient.patient), 'Cadastro já existente', 'Atualizar existente', 'Cancelar');
+                if (atualizar) window.editPatient(duplicatePatient.id);
+            } else {
+                window.showFmuNotice(duplicated, 'Cadastro duplicado');
+            }
+        }
     });
 
     nameInput.addEventListener('input', () => {
@@ -1587,6 +1620,7 @@ function initializePatientRegistrationModal() {
         currentType = detectedType;
         const doc = parts.value;
         const patientId = currentType === 'civil' ? `civil_${doc}` : `militar_${doc}`;
+        const updatePatientId = docInput.dataset.updatePatientId || patientId;
 
         if (!validateIncompleteDocument(docInput.value, currentType, 'Cadastro de Paciente')) return;
 
@@ -1596,14 +1630,14 @@ function initializePatientRegistrationModal() {
             cpf: currentType === 'civil' ? doc : '',
             re: currentType === 'militar' ? doc : '',
             email: emailInput.value,
-            excludePatientId: patientId
+            excludePatientId: updatePatientId
         });
         if (duplicateMessage) {
             window.showFmuNotice(duplicateMessage + ' O sistema não aceita CPF, RE ou email repetidos, mesmo em funções diferentes.', 'Cadastro duplicado');
             return;
         }
 
-        const previousPatient = state.registeredPatients[patientId];
+        const previousPatient = state.registeredPatients[updatePatientId];
         const patientData = {
             type: currentType,
             name: nameInput.value.trim(),
@@ -1622,6 +1656,9 @@ function initializePatientRegistrationModal() {
             patientData.unit = selectedUnit ? selectedUnit.value : null;
         }
 
+        if (updatePatientId && updatePatientId !== patientId && state.registeredPatients[updatePatientId]) {
+            delete state.registeredPatients[updatePatientId];
+        }
         state.registeredPatients[patientId] = patientData;
         saveState();
 
@@ -1632,6 +1669,7 @@ function initializePatientRegistrationModal() {
         emailInput.value = '';
         phoneInput.value = '';
         rankInput.value = '';
+        docInput.dataset.updatePatientId = '';
         document.querySelectorAll('input[name="regMilitaryUnit"]').forEach(r => r.checked = false);
         applyDetectedRegistrationType();
         renderRegisteredPatientsList();
@@ -2053,6 +2091,62 @@ function validateDetectedCpfOrRe(value, title = 'Verificação de Cadastro') {
     return true;
 }
 
+function formatPatientDetailsForConfirm(patient) {
+    if (!patient) return 'Registro localizado.';
+    const docLabel = patient.type === 'civil' ? 'CPF' : 'RE';
+    const doc = patient.type === 'civil' ? formatCpf(patient.cpf) : formatRe(patient.re);
+    return [
+        'Já existe um cadastro com este registro:' ,
+        '',
+        'Nome: ' + (patient.name || ''),
+        docLabel + ': ' + doc,
+        'Email: ' + (patient.email || ''),
+        'WhatsApp: ' + (patient.phone || ''),
+        patient.rank ? 'Graduação: ' + patient.rank : '',
+        patient.unit ? 'Unidade: ' + (patient.unit === 'copom' ? 'COPOM' : 'Outros') : '',
+        '',
+        'Deseja atualizar o cadastro existente ou cancelar?'
+    ].filter(Boolean).join('\n');
+}
+
+function formatUserDetailsForConfirm(user) {
+    if (!user) return 'Usuário localizado.';
+    return [
+        'Já existe um usuário com este CPF:' ,
+        '',
+        'Nome: ' + (user.name || ''),
+        'CPF: ' + formatUserCpf(user.cpf),
+        'Especialidade: ' + (user.specialty || ''),
+        'Email: ' + (user.email || ''),
+        '',
+        'Deseja atualizar o usuário existente ou cancelar?'
+    ].filter(Boolean).join('\n');
+}
+
+function localizarPacienteDuplicado({ cpf = '', re = '', email = '', excludeId = '' } = {}) {
+    const cleanCpf = normalizeCpf(cpf);
+    const cleanRe = normalizeReValue(re);
+    const cleanEmail = normalizeEmail(email);
+    for (const [id, patient] of Object.entries(state.registeredPatients || {})) {
+        if (excludeId && id === excludeId) continue;
+        if (cleanCpf && normalizeCpf(patient.cpf) === cleanCpf) return { id, patient, field: 'CPF' };
+        if (cleanRe && normalizeReValue(patient.re) === cleanRe) return { id, patient, field: 'RE' };
+        if (cleanEmail && normalizeEmail(patient.email) === cleanEmail) return { id, patient, field: 'email' };
+    }
+    return null;
+}
+
+function localizarUsuarioDuplicado({ cpf = '', email = '', excludeId = '' } = {}) {
+    const cleanCpf = normalizeCpf(cpf);
+    const cleanEmail = normalizeEmail(email);
+    for (const [id, user] of Object.entries(state.systemUsers || {})) {
+        if (excludeId && id === excludeId) continue;
+        if (cleanCpf && normalizeCpf(user.cpf) === cleanCpf) return { id, user, field: 'CPF' };
+        if (cleanEmail && normalizeEmail(user.email) === cleanEmail) return { id, user, field: 'email' };
+    }
+    return null;
+}
+
 function findGlobalDuplicate({ cpf = '', re = '', email = '', excludePatientId = '', excludeUserId = '' } = {}) {
     const cleanCpf = normalizeCpf(cpf);
     const cleanRe = normalizeReValue(re);
@@ -2101,6 +2195,8 @@ function clearUserForm() {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+    const cpfInput = document.getElementById('userCpfInput');
+    if (cpfInput) cpfInput.dataset.updateUserId = '';
     renderSpecialtyOptions();
 }
 
@@ -2136,6 +2232,7 @@ window.editSystemUser = function(userId) {
     document.getElementById('userEditId').value = userId;
     document.getElementById('userNameInput').value = user.name || '';
     document.getElementById('userCpfInput').value = formatUserCpf(user.cpf);
+    document.getElementById('userCpfInput').dataset.updateUserId = userId;
     document.getElementById('userEmailInput').value = user.email || '';
     document.getElementById('userPasswordInput').value = '';
     renderSpecialtyOptions();
@@ -2167,16 +2264,17 @@ async function saveSystemUserFromForm() {
 
     state.systemUsers = state.systemUsers || {};
     const calculatedUserId = getUserIdFromCpf(cpf);
-    const previous = editId ? state.systemUsers?.[editId] : state.systemUsers?.[calculatedUserId];
-    const duplicateMessage = findGlobalDuplicate({ cpf, email, excludeUserId: editId || calculatedUserId });
+    const updateUserId = document.getElementById('userCpfInput')?.dataset.updateUserId || editId || calculatedUserId;
+    const previous = updateUserId ? state.systemUsers?.[updateUserId] : state.systemUsers?.[calculatedUserId];
+    const duplicateMessage = findGlobalDuplicate({ cpf, email, excludeUserId: updateUserId });
     if (duplicateMessage) {
         window.showFmuNotice(duplicateMessage + ' O sistema não aceita CPF, RE ou email repetidos, mesmo em funções diferentes.', 'Cadastro duplicado');
         return;
     }
 
     const userId = calculatedUserId;
-    if (editId && editId !== userId && state.systemUsers[editId]) {
-        delete state.systemUsers[editId];
+    if (updateUserId && updateUserId !== userId && state.systemUsers[updateUserId]) {
+        delete state.systemUsers[updateUserId];
     }
     const temporaryPassword = passwordField || (previous ? previous.password : generateTemporaryPassword());
     const mustChangePassword = passwordField ? true : (!previous || previous.mustChangePassword === true);
@@ -2206,9 +2304,9 @@ async function saveSystemUserFromForm() {
     });
 
     if (result.ok) {
-        window.showFmuNotice('Usuário salvo e senha temporária enviada por e-mail.', 'Cadastro de Usuário');
+        window.showFmuNotice(previous ? 'Cadastro atualizado com sucesso. Senha temporária enviada por e-mail.' : 'Usuário salvo e senha temporária enviada por e-mail.', 'Cadastro de Usuário');
     } else {
-        window.showFmuNotice(`Usuário salvo. Não foi possível enviar o e-mail automaticamente: ${result.reason || 'EmailJS não configurado.'}\n\nSenha temporária: ${temporaryPassword}`, 'Cadastro de Usuário');
+        window.showFmuNotice(previous ? `Cadastro atualizado com sucesso. Não foi possível enviar o e-mail automaticamente: ${result.reason || 'EmailJS não configurado.'}\n\nSenha temporária: ${temporaryPassword}` : `Usuário salvo. Não foi possível enviar o e-mail automaticamente: ${result.reason || 'EmailJS não configurado.'}\n\nSenha temporária: ${temporaryPassword}`, 'Cadastro de Usuário');
     }
 }
 
@@ -2240,19 +2338,47 @@ function initializeUserRegistrationModal() {
         let digits = normalizeCpf(event.target.value);
         event.target.value = formatCpf(digits);
     });
-    cpfInput?.addEventListener('blur', () => {
+    cpfInput?.addEventListener('blur', async () => {
         const cpf = normalizeCpf(cpfInput.value);
         if (cpf && cpf.length < 11) {
             window.showFmuNotice('CPF incompleto. Digite os 11 números do CPF do especialista.', 'CPF incompleto');
+            return;
+        }
+        if (cpf.length === 11) {
+            const editId = document.getElementById('userEditId')?.value || cpfInput.dataset.updateUserId || '';
+            const duplicateUser = localizarUsuarioDuplicado({ cpf, excludeId: editId });
+            if (duplicateUser) {
+                const atualizar = await window.showFmuConfirm(formatUserDetailsForConfirm(duplicateUser.user), 'Usuário já existente', 'Atualizar existente', 'Cancelar');
+                if (atualizar) {
+                    window.editSystemUser(duplicateUser.id);
+                    window.showFmuNotice('Dados carregados para atualização. Confira as informações e clique em Salvar Usuário.', 'Atualização de usuário');
+                } else {
+                    cpfInput.value = '';
+                    cpfInput.dataset.updateUserId = '';
+                }
+                return;
+            }
+            const duplicatePatient = localizarPacienteDuplicado({ cpf });
+            if (duplicatePatient) {
+                window.showFmuNotice(formatPatientDetailsForConfirm(duplicatePatient.patient).replace('Deseja atualizar o cadastro existente ou cancelar?', 'Este CPF já está vinculado a um paciente. O sistema não aceita CPF repetido em funções diferentes.'), 'Cadastro duplicado');
+            }
         }
     });
-    document.getElementById('userEmailInput')?.addEventListener('blur', () => {
+    document.getElementById('userEmailInput')?.addEventListener('blur', async () => {
         const editId = document.getElementById('userEditId')?.value || '';
         const cpf = normalizeCpf(cpfInput?.value || '');
         const email = normalizeEmail(document.getElementById('userEmailInput')?.value || '');
         if (!email) return;
         const duplicated = findGlobalDuplicate({ cpf, email, excludeUserId: editId || getUserIdFromCpf(cpf) });
-        if (duplicated) window.showFmuNotice(duplicated, 'Cadastro duplicado');
+        if (duplicated) {
+            const duplicateUser = localizarUsuarioDuplicado({ email, excludeId: editId || getUserIdFromCpf(cpf) });
+            if (duplicateUser) {
+                const atualizar = await window.showFmuConfirm(formatUserDetailsForConfirm(duplicateUser.user), 'Usuário já existente', 'Atualizar existente', 'Cancelar');
+                if (atualizar) window.editSystemUser(duplicateUser.id);
+            } else {
+                window.showFmuNotice(duplicated, 'Cadastro duplicado');
+            }
+        }
     });
 
     addSpecialtyBtn?.addEventListener('click', () => {

@@ -15,6 +15,7 @@
     --logo-orbit-trail-color: #ffd400;
     --calendar-available-bg: #26be4c;
     --calendar-available-border: #26be4c;
+    --calendar-available-border-width: 2px;
 }
 
 
@@ -2970,6 +2971,7 @@ header .logo {
 #calendar .calendar-day.partially-booked {
     background: var(--calendar-available-bg, #26be4c) !important;
     border-color: var(--calendar-available-border, #26be4c) !important;
+    border-width: var(--calendar-available-border-width, 2px) !important;
     color: #ffffff !important;
     box-shadow:
         0 0 0 1px color-mix(in srgb, var(--calendar-available-border, #26be4c) 32%, transparent),
@@ -3200,4 +3202,28 @@ body.neon-calendar-enabled #calendar .calendar-day.disabled {
     .email-sending-logo-wrap p {
         font-size: 16px;
     }
+}
+
+
+/* Botão confirmar agendamento em verde quando a queixa habilita o envio */
+#confirmBooking.booking-confirm-ready,
+.btn-primary.booking-confirm-ready {
+    background: linear-gradient(135deg, #12b84a, #078f36) !important;
+    border-color: #07a13b !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 14px rgba(18, 184, 74, 0.45) !important;
+}
+
+.visual-range-label {
+    display: block;
+    margin-top: 12px;
+    margin-bottom: 6px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+#visualAvailableDayBorderWidth {
+    width: 100%;
+    accent-color: var(--accent-primary);
+    margin: 4px 0 12px;
 }

@@ -670,7 +670,8 @@ function showVisualConfigModal() {
     visualConfigDraft = {
         logoDataUrl: state.appearanceConfig?.logoDataUrl || '',
         backgroundDataUrl: state.appearanceConfig?.backgroundDataUrl || '',
-        availableDayColor: state.appearanceConfig?.availableDayColor || '#26be4c'
+        availableDayColor: state.appearanceConfig?.availableDayColor || '#26be4c',
+        availableDayBorderWidth: Math.max(1, Math.min(8, parseInt(state.appearanceConfig?.availableDayBorderWidth || 2, 10) || 2))
     };
 
     const logoInput = document.getElementById('visualLogoInput');
@@ -692,6 +693,7 @@ function initializeVisualConfigModal() {
     const resetLogoBtn = document.getElementById('resetLogoVisual');
     const resetBackgroundBtn = document.getElementById('resetBackgroundVisual');
     const availableDayColorInput = document.getElementById('visualAvailableDayColor');
+    const availableDayBorderWidthInput = document.getElementById('visualAvailableDayBorderWidth');
     const resetAvailableDayColorBtn = document.getElementById('resetAvailableDayColor');
 
     if (!modal || !closeBtn || !cancelBtn || !saveBtn) return;
@@ -759,10 +761,19 @@ function initializeVisualConfigModal() {
         });
     }
 
+    if (availableDayBorderWidthInput) {
+        availableDayBorderWidthInput.addEventListener('input', () => {
+            visualConfigDraft = visualConfigDraft || {};
+            visualConfigDraft.availableDayBorderWidth = Math.max(1, Math.min(8, parseInt(availableDayBorderWidthInput.value || 2, 10) || 2));
+            renderVisualConfigPreview();
+        });
+    }
+
     if (resetAvailableDayColorBtn) {
         resetAvailableDayColorBtn.addEventListener('click', () => {
             visualConfigDraft = visualConfigDraft || {};
             visualConfigDraft.availableDayColor = '#26be4c';
+            visualConfigDraft.availableDayBorderWidth = 2;
             renderVisualConfigPreview();
         });
     }
@@ -771,7 +782,8 @@ function initializeVisualConfigModal() {
         state.appearanceConfig = {
             logoDataUrl: visualConfigDraft?.logoDataUrl || '',
             backgroundDataUrl: visualConfigDraft?.backgroundDataUrl || '',
-            availableDayColor: visualConfigDraft?.availableDayColor || '#26be4c'
+            availableDayColor: visualConfigDraft?.availableDayColor || '#26be4c',
+            availableDayBorderWidth: Math.max(1, Math.min(8, parseInt(visualConfigDraft?.availableDayBorderWidth || 2, 10) || 2))
         };
         applyAppearanceConfig();
         saveState();
@@ -786,6 +798,7 @@ function renderVisualConfigPreview() {
     const logoSrc = visualConfigDraft?.logoDataUrl || DEFAULT_LOGO_SRC;
     const backgroundSrc = visualConfigDraft?.backgroundDataUrl || DEFAULT_BACKGROUND_SRC;
     const availableDayColor = visualConfigDraft?.availableDayColor || '#26be4c';
+    const availableDayBorderWidth = Math.max(1, Math.min(8, parseInt(visualConfigDraft?.availableDayBorderWidth || 2, 10) || 2));
 
     if (logoPreview) logoPreview.src = logoSrc;
     if (backgroundPreview) backgroundPreview.style.backgroundImage = `url("${String(backgroundSrc).replace(/"/g, '\\"')}")`;
@@ -795,8 +808,13 @@ function renderVisualConfigPreview() {
     if (availableDayPreview) {
         availableDayPreview.style.background = availableDayColor;
         availableDayPreview.style.borderColor = availableDayColor;
+        availableDayPreview.style.borderWidth = availableDayBorderWidth + 'px';
     }
     if (availableDayColorInput) availableDayColorInput.value = availableDayColor;
+    const availableDayBorderWidthInput = document.getElementById('visualAvailableDayBorderWidth');
+    const availableDayBorderWidthValue = document.getElementById('visualAvailableDayBorderWidthValue');
+    if (availableDayBorderWidthInput) availableDayBorderWidthInput.value = String(availableDayBorderWidth);
+    if (availableDayBorderWidthValue) availableDayBorderWidthValue.textContent = availableDayBorderWidth + 'px';
 }
 
 function resizeImageToDataUrl(file, maxWidth, maxHeight, outputType, quality) {
