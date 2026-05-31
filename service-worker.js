@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fmu-cache-v20260531-02-cadastro-auto-email-loader';
+const CACHE_NAME = 'fmu-cache-v20260530-21-cadastro-cpf-re-final';
 const APP_SHELL = [
     './',
     './index.html',

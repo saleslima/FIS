@@ -1488,8 +1488,9 @@ function initializePatientRegistrationModal() {
             document.querySelectorAll('input[name="regMilitaryUnit"]').forEach(r => r.checked = false);
         } else {
             docLabel.textContent = 'RE identificado:';
-            docInput.placeholder = '000000-0';
-            docInput.maxLength = 8;
+            docInput.placeholder = '000000-0 ou CPF';
+            // Mantem 14 para permitir continuar digitando. Se passar de 7 caracteres, vira CPF.
+            docInput.maxLength = 14;
             rankField.style.display = 'block';
             unitField.style.display = 'block';
         }
@@ -1941,14 +1942,18 @@ function normalizeEmail(value) {
 function getCpfReInputParts(value) {
     const raw = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const cpfMode = raw.length > 7;
+
     if (cpfMode) {
+        // Passou de 7 caracteres: trata como CPF e aceita somente numeros.
         const digits = raw.replace(/\D/g, '').slice(0, 11);
-        return { raw, cpfMode, value: digits, digits };
+        return { raw, cpfMode: true, value: digits, digits };
     }
+
+    // Ate o 6o caractere: somente numeros. 7o caractere: letra ou numero.
     const firstSix = raw.slice(0, 6).replace(/\D/g, '');
     const seventh = raw.length > 6 ? raw.slice(6, 7).replace(/[^A-Z0-9]/g, '') : '';
     const re = (firstSix + seventh).slice(0, 7);
-    return { raw, cpfMode, value: re, digits: re.replace(/\D/g, '') };
+    return { raw, cpfMode: false, value: re, digits: re.replace(/\D/g, '') };
 }
 
 function normalizeCpfReRaw(value) {
@@ -1998,7 +2003,13 @@ function detectCpfOrReFromDigits(value) {
 function formatCpfOrReInput(value) {
     const parts = getCpfReInputParts(value);
     const clean = parts.value;
-    if (parts.cpfMode) return formatCpfPartial(clean);
+
+    if (parts.cpfMode) {
+        // CPF: remove letras automaticamente e aplica mascara parcial de CPF.
+        return formatCpfPartial(clean);
+    }
+
+    // RE: ate 6 digitos numericos; 7o caractere pode ser letra ou numero.
     if (/^\d{6}[A-Z0-9]$/.test(clean)) return `${clean.slice(0, 6)}-${clean.slice(6, 7)}`;
     return clean;
 }
